@@ -1,0 +1,262 @@
+[
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "ApproveCancel",
+    "RelativePath": "api/cancel/approve",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ApproveCancelRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "GetPending",
+    "RelativePath": "api/cancel/pending",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "RejectCancel",
+    "RelativePath": "api/cancel/reject/{cancelId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "cancelId",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "supervisorId",
+        "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "RequestCancel",
+    "RelativePath": "api/cancel/request",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.CancelRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "AssignPallet",
+    "RelativePath": "api/receiving/assign-pallet",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.AssignPalletRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "CloseSession",
+    "RelativePath": "api/receiving/close-session/{sessionId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "sessionId",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "OpenSession",
+    "RelativePath": "api/receiving/open-session",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.OpenReceivingRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "GetPO",
+    "RelativePath": "api/receiving/po/{poId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "poId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "ScanPart",
+    "RelativePath": "api/receiving/scan-part",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ScanReceiptPartRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ConfirmLabeling",
+    "RelativePath": "api/unload/confirm-labeling",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ConfirmLabelingRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ConfirmUnload",
+    "RelativePath": "api/unload/confirm-unload",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ConfirmUnloadRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "LoadToBasket",
+    "RelativePath": "api/unload/load-to-basket",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.LoadToBasketRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "OpenSession",
+    "RelativePath": "api/unload/open-session",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.OpenUnloadRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ScanBasket",
+    "RelativePath": "api/unload/scan-basket/{basketId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "basketId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ScanPallet",
+    "RelativePath": "api/unload/scan-pallet/{palletId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "palletId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.WeatherForecastController",
+    "Method": "Get",
+    "RelativePath": "WeatherForecast",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": [
+      {
+        "Type": "System.Collections.Generic.IEnumerable\u00601[[WmsApi.WeatherForecast, WmsApi, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]",
+        "MediaTypes": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "StatusCode": 200
+      }
+    ],
+    "EndpointName": "GetWeatherForecast"
+  }
+]
