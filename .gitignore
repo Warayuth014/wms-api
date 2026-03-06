@@ -1,12 +1,12 @@
 # Visual Studio
-.vs/
+WmsApi/.vs/
 *.suo
 *.user
 *.backup.json
 
-# Build
-bin/
-obj/
+# Build output
+WmsApi/WmsApi/bin/
+WmsApi/WmsApi/obj/
 
 # Sensitive
-appsettings.Development.json
+WmsApi/WmsApi/appsettings.Development.json
