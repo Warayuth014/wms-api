@@ -1,1 +1,7 @@
 *.bin
+/WmsApi/.vs/WmsApi/config
+/WmsApi/.vs/WmsApi/CopilotIndices/17.14.1641.39856
+/WmsApi/.vs/WmsApi/FileContentIndex
+/WmsApi/.vs/WmsApi/v17
+/WmsApi/WmsApi/bin/Debug/net8.0
+/WmsApi/WmsApi/obj/Debug/net8.0
