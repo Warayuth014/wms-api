@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/Admin/Desktop/WmsApi/WmsApi && dotnet build 2>&1 | tail -40)",
+      "Bash(cd /c/Users/Admin/Desktop/WmsApi/WmsApi && dotnet build 2>&1 | tail -10)",
+      "Bash(cd /c/Users/Admin/Desktop/WmsApi/WmsApi && dotnet build 2>&1 | grep -i \"UnloadController\")",
+      "Bash(cd /c/Users/Admin/Desktop/WmsApi/WmsApi && dotnet build 2>&1 | grep -E \"\\(error|Build succeeded\\)\")",
+      "Bash(cd /c/Users/Admin/Desktop/WmsApi/WmsApi && dotnet build --no-incremental -p:CopyBuildOutputToOutputDirectory=false 2>&1 | grep -E \"\\(error CS|Build succeeded|Build FAILED\\)\")"
+    ]
+  }
+}

@@ -1,0 +1,263 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using WmsApi.Data;
+using WmsApi.DTOs;
+using WmsApi.Models;
+
+namespace WmsApi.Controllers;
+
+/// <summary>
+/// Simulation Controller — รวม endpoint จำลองระบบอัตโนมัติทั้งหมด
+/// ระบบจริงจะมี AGV/ASRS/Robot ทำ — mockup ใช้ยิง API แทน
+/// </summary>
+[ApiController]
+[Route("api/simulate")]
+public class SimulationController(WmsDbContext db) : ControllerBase
+{
+    // ─────────────────────────────────────────────
+    //  AGV — จำลองรถขนอัตโนมัติ
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// AGV รับ Pallet จาก Station แล้ว
+    /// RETURNING/FG/PW → IN_TRANSIT
+    /// </summary>
+    [HttpPost("agv/pickup-pallet/{palletId}")]
+    public async Task<IActionResult> AgvPickupPallet(string palletId)
+    {
+        var pallet = await db.Pallets.FindAsync(palletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{palletId}' not found."));
+
+        var oldStatus = pallet.Status;
+        pallet.Status = "IN_TRANSIT";
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"🤖 AGV รับ Pallet '{palletId}' แล้ว ({oldStatus} → IN_TRANSIT)"));
+    }
+
+    /// <summary>
+    /// AGV ส่ง Pallet ถึงปลายทางแล้ว
+    /// IN_TRANSIT → AVAILABLE (ถ้าปลายทางพร้อมใช้)
+    /// </summary>
+    [HttpPost("agv/deliver-pallet")]
+    public async Task<IActionResult> AgvDeliverPallet([FromBody] AgvDeliverRequest req)
+    {
+        var pallet = await db.Pallets.FindAsync(req.PalletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
+
+        var dest = req.Destination.ToUpper();
+
+        // กำหนด status ตามปลายทาง
+        if (dest == "ASRS")
+        {
+            // ถึง ASRS → ถ้ามีของ = STORED, ว่าง = AVAILABLE
+            var hasItems = await db.ReceiptLines.AnyAsync(l => l.PalletId == req.PalletId);
+            pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+        }
+        else
+        {
+            pallet.Status = dest switch
+            {
+                "PREWORK" => "PREWORK",        // ถึง Prework → รอติดฉลาก
+                "PICK_STATION" => "AVAILABLE",  // ถึง Pick Station → พร้อม pick
+                "UNLOAD_STATION" => "FG",       // ถึง Unload Station → พร้อม unload
+                _ => "AVAILABLE",
+            };
+        }
+        pallet.Location = dest;
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"🤖 AGV ส่ง Pallet '{req.PalletId}' ถึง {dest} แล้ว (สถานะ: {pallet.Status})"));
+    }
+
+    // ─────────────────────────────────────────────
+    //  ASRS — จำลองคลังอัตโนมัติ
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// ASRS รับ Pallet เข้าเก็บแล้ว
+    /// IN_TRANSIT → AVAILABLE, Location = ASRS
+    /// </summary>
+    [HttpPost("asrs/receive-pallet/{palletId}")]
+    public async Task<IActionResult> AsrsReceivePallet(string palletId)
+    {
+        var pallet = await db.Pallets.FindAsync(palletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{palletId}' not found."));
+
+        // อัพเดท PutawaySession ที่เกี่ยวข้อง (ถ้ามี)
+        var putaway = await db.PutawaySessions
+            .Where(p => p.PalletId == palletId && p.Status == "AGV_DISPATCHED")
+            .OrderByDescending(p => p.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (putaway is not null)
+        {
+            putaway.Status = "COMPLETED";
+            putaway.CompletedAt = DateTime.UtcNow;
+        }
+
+        // ถ้า pallet มีของ → STORED, ถ้าว่าง → AVAILABLE
+        var hasItems = await db.ReceiptLines.AnyAsync(l => l.PalletId == palletId);
+        pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+        pallet.Location = "ASRS";
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"📦 ASRS รับ Pallet '{palletId}' เข้าเก็บแล้ว (Location: ASRS, Status: {pallet.Status})"));
+    }
+
+    /// <summary>
+    /// ASRS ดึง Pallet ออกมา → จำลอง AGV นำไปยังปลายทาง
+    /// AVAILABLE → IN_TRANSIT → AVAILABLE (ถึงปลายทาง)
+    /// ทำ 2 ขั้นในครั้งเดียว (shortcut สำหรับ mockup)
+    /// </summary>
+    [HttpPost("asrs/retrieve-pallet")]
+    public async Task<IActionResult> AsrsRetrievePallet([FromBody] AsrsRetrieveRequest req)
+    {
+        var pallet = await db.Pallets.FindAsync(req.PalletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
+
+        if (pallet.Location != "ASRS" || (pallet.Status != "AVAILABLE" && pallet.Status != "STORED"))
+            return BadRequest(new ApiError(
+                $"Pallet '{req.PalletId}' ไม่ได้อยู่ใน ASRS (Location: {pallet.Location}, Status: {pallet.Status})"));
+
+        var dest = req.Destination.ToUpper();
+
+        // จำลอง: ASRS ดึงออก → IN_TRANSIT → ถึงปลายทาง (ทำทีเดียว)
+        pallet.Status = dest switch
+        {
+            "PICK_STATION" => "AVAILABLE",
+            "UNLOAD_STATION" => pallet.Type ?? "FG",
+            "PREWORK" => "PREWORK",
+            _ => "AVAILABLE",
+        };
+        pallet.Location = dest;
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"📦 ASRS ดึง Pallet '{req.PalletId}' → {dest} (สถานะ: {pallet.Status})"));
+    }
+
+    // ─────────────────────────────────────────────
+    //  Labeling — จำลองการติดฉลาก PW → FG
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// ติดฉลากเสร็จ → PW → FG + พร้อม putaway ไป ASRS
+    /// </summary>
+    [HttpPost("labeling/complete/{palletId}")]
+    public async Task<IActionResult> LabelingComplete(string palletId)
+    {
+        var pallet = await db.Pallets.FindAsync(palletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{palletId}' not found."));
+
+        if (pallet.Type != "PW")
+            return BadRequest(new ApiError(
+                $"Pallet '{palletId}' ไม่ใช่ประเภท PW (ปัจจุบัน: {pallet.Type})"));
+
+        pallet.Type = "FG";
+        pallet.Status = "FG";     // พร้อม putaway
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"🏷️ Pallet '{palletId}' ติดฉลากเสร็จ (PW → FG) พร้อม Putaway เข้า ASRS"));
+    }
+
+    // ─────────────────────────────────────────────
+    //  Basket Return — จำลองการคืน Basket
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Robot/AGV รับ Basket ที่ว่างแล้วกลับไป
+    /// RETURNING → AVAILABLE
+    /// </summary>
+    [HttpPost("basket/return-complete/{basketId}")]
+    public async Task<IActionResult> BasketReturnComplete(string basketId)
+    {
+        var basket = await db.Baskets.FindAsync(basketId);
+        if (basket is null)
+            return NotFound(new ApiError($"Basket '{basketId}' not found."));
+
+        basket.Status = "AVAILABLE";
+        basket.Destination = null;
+        basket.Zone = null;
+        basket.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"🧺 Basket '{basketId}' ถูกส่งกลับเรียบร้อย (AVAILABLE)"));
+    }
+
+    // ─────────────────────────────────────────────
+    //  Pallet Return — จำลอง pallet กลับจาก Pick/Unload
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Pallet ที่ RETURNING ถูก AGV นำกลับ ASRS/Zone Pick เรียบร้อย
+    /// RETURNING → AVAILABLE, Location = destination
+    /// </summary>
+    [HttpPost("pallet/return-complete")]
+    public async Task<IActionResult> PalletReturnComplete([FromBody] PalletReturnCompleteRequest req)
+    {
+        var pallet = await db.Pallets.FindAsync(req.PalletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
+
+        var dest = req.Destination?.ToUpper() ?? "ASRS";
+
+        // ถ้ากลับ ASRS → เช็คว่ามีของหรือเปล่า
+        if (dest == "ASRS")
+        {
+            var hasItems = await db.ReceiptLines.AnyAsync(l => l.PalletId == req.PalletId);
+            pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+        }
+        else
+        {
+            pallet.Status = "AVAILABLE";
+        }
+        pallet.Location = dest;
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"📦 Pallet '{req.PalletId}' ส่งกลับ {dest} เรียบร้อย (Status: {pallet.Status})"));
+    }
+
+}
+
+
+// ── Simulation DTOs ────────────────────────────
+public record AgvDeliverRequest(
+    string PalletId,
+    string Destination   // ASRS | PREWORK | PICK_STATION | UNLOAD_STATION
+);
+
+
+public record AsrsRetrieveRequest(
+    string PalletId,
+    string Destination   // PICK_STATION | UNLOAD_STATION | PREWORK
+);
+
+public record PalletReturnCompleteRequest(
+    string PalletId,
+    string? Destination  // ASRS | ZONE_PICK
+);

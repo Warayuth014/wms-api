@@ -1,0 +1,791 @@
+[
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "ApproveCancel",
+    "RelativePath": "api/cancel/approve",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ApproveCancelRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "GetPending",
+    "RelativePath": "api/cancel/pending",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "RejectCancel",
+    "RelativePath": "api/cancel/reject/{cancelId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "cancelId",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "supervisorId",
+        "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.CancelController",
+    "Method": "RequestCancel",
+    "RelativePath": "api/cancel/request",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.CancelRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "GetActiveSession",
+    "RelativePath": "api/picking/active-session/{packPalletId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "packPalletId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "AssignStation",
+    "RelativePath": "api/picking/assign-station",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.AssignPickStationRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "GetAvailableLines",
+    "RelativePath": "api/picking/available-lines",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "CompleteSession",
+    "RelativePath": "api/picking/complete-session/{sessionId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "sessionId",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "ConfirmPick",
+    "RelativePath": "api/picking/confirm-pick",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ConfirmPickRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "CreateTestOrder",
+    "RelativePath": "api/picking/create-test-order",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.CreateTestOrderRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "OpenSession",
+    "RelativePath": "api/picking/open-session",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.OpenPickingRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "GetPickOrder",
+    "RelativePath": "api/picking/order/{pickOrderId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "pickOrderId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "GetPickOrders",
+    "RelativePath": "api/picking/orders",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "PickItem",
+    "RelativePath": "api/picking/pick-item",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.PickItemRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "ReturnPallet",
+    "RelativePath": "api/picking/return-pallet",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ReturnPalletRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "ReturnSource",
+    "RelativePath": "api/picking/return-source",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ReturnSourceRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PickingController",
+    "Method": "ScanSource",
+    "RelativePath": "api/picking/scan-source/{sourceId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "sourceId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PutawayController",
+    "Method": "ConfirmPutaway",
+    "RelativePath": "api/putaway/confirm",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ConfirmPutawayRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PutawayController",
+    "Method": "RecallToPrework",
+    "RelativePath": "api/putaway/recall-to-prework",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.RecallToPreworkRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.PutawayController",
+    "Method": "ScanPallet",
+    "RelativePath": "api/putaway/scan-pallet/{palletId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "palletId",
+        "Type": "System.String",
+        "IsRequired": true
+      },
+      {
+        "Name": "stationId",
+        "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "GetActiveSession",
+    "RelativePath": "api/receiving/active-session/{poId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "poId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "AssignPallet",
+    "RelativePath": "api/receiving/assign-pallet",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.AssignPalletRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "CloseSession",
+    "RelativePath": "api/receiving/close-session/{sessionId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "sessionId",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "OpenSession",
+    "RelativePath": "api/receiving/open-session",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.OpenReceivingRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "GetPendingPalletLines",
+    "RelativePath": "api/receiving/pending-pallet-lines",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "GetPO",
+    "RelativePath": "api/receiving/po/{poId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "poId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReceivingController",
+    "Method": "ScanPart",
+    "RelativePath": "api/receiving/scan-part",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ScanReceiptPartRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReturnController",
+    "Method": "CloseSession",
+    "RelativePath": "api/return/close-session/{returnId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "returnId",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReturnController",
+    "Method": "OpenSession",
+    "RelativePath": "api/return/open-session",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.OpenReturnRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReturnController",
+    "Method": "GetOrder",
+    "RelativePath": "api/return/order/{orderId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "orderId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.ReturnController",
+    "Method": "ReceiveItem",
+    "RelativePath": "api/return/receive-item",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ReceiveReturnItemRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "AgvDeliverPallet",
+    "RelativePath": "api/simulate/agv/deliver-pallet",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.Controllers.AgvDeliverRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "AgvPickupPallet",
+    "RelativePath": "api/simulate/agv/pickup-pallet/{palletId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "palletId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "AsrsReceivePallet",
+    "RelativePath": "api/simulate/asrs/receive-pallet/{palletId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "palletId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "AsrsRetrievePallet",
+    "RelativePath": "api/simulate/asrs/retrieve-pallet",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.Controllers.AsrsRetrieveRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "BasketReturnComplete",
+    "RelativePath": "api/simulate/basket/return-complete/{basketId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "basketId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "LabelingComplete",
+    "RelativePath": "api/simulate/labeling/complete/{palletId}",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "palletId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.SimulationController",
+    "Method": "PalletReturnComplete",
+    "RelativePath": "api/simulate/pallet/return-complete",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.Controllers.PalletReturnCompleteRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "GetConfirmedItems",
+    "RelativePath": "api/unload/confirmed-items",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ConfirmLabeling",
+    "RelativePath": "api/unload/confirm-labeling",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ConfirmLabelingRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ConfirmUnload",
+    "RelativePath": "api/unload/confirm-unload",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ConfirmUnloadRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "LoadBasket",
+    "RelativePath": "api/unload/load-basket",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.LoadBasketRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "GetLoadedItems",
+    "RelativePath": "api/unload/loaded-items",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "LoadToBasket",
+    "RelativePath": "api/unload/load-to-basket",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.LoadToBasketRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "OpenSession",
+    "RelativePath": "api/unload/open-session",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.OpenUnloadRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ReturnBasket",
+    "RelativePath": "api/unload/return-basket",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ReturnBasketRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ReturnPalletToAsis",
+    "RelativePath": "api/unload/return-pallet-to-asis",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "req",
+        "Type": "WmsApi.DTOs.ReturnPalletToAsisRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ScanBasket",
+    "RelativePath": "api/unload/scan-basket/{basketId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "basketId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UnloadController",
+    "Method": "ScanPallet",
+    "RelativePath": "api/unload/scan-pallet/{palletId}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "palletId",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UploadController",
+    "Method": "UploadPartImage",
+    "RelativePath": "api/upload/part-image",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "file",
+        "Type": "Microsoft.AspNetCore.Http.IFormFile",
+        "IsRequired": false
+      },
+      {
+        "Name": "partId",
+        "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "WmsApi.Controllers.UploadController",
+    "Method": "GetAllParts",
+    "RelativePath": "api/upload/parts",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  }
+]
