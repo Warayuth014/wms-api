@@ -422,20 +422,56 @@ public class ReceivingController(WmsDbContext db) : ControllerBase
                 "ตรวจสอบว่าสินค้าและ Pallet เป็นประเภทเดียวกัน"));
 
         // ── ตรวจ Condition ของของที่อยู่ใน Pallet จริง (อ่านจาก Part master) ──
-        var existingConditionsInPallet = await db.ReceiptLines
+        var existingLinesInPallet = await db.ReceiptLines
             .Include(l => l.Part)
             .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
-            .Select(l => l.Condition)
-            .Distinct()
             .ToListAsync();
 
-        if (existingConditionsInPallet.Count > 0)
+        if (existingLinesInPallet.Count > 0)
         {
-            var palletActualCondition = existingConditionsInPallet[0];
+            var palletActualCondition = existingLinesInPallet.Select(l => l.Condition).Distinct().First();
             if (lineCondition != palletActualCondition)
                 return BadRequest(new ApiError(
                     $"Pallet '{req.PalletId}' มีสินค้า Condition '{palletActualCondition}' อยู่แล้ว ไม่สามารถเพิ่มสินค้า Condition '{lineCondition}' ได้",
                     "ของใน Pallet ต้องเป็น Condition เดียวกันทั้งหมด"));
+
+            // ── ตรวจ Owner: สินค้าใน Pallet ต้องเป็นของบริษัทเดียวกัน ──
+            var existingOwners = existingLinesInPallet
+                .Where(l => l.Part != null)
+                .Select(l => l.Part!.Owner)
+                .Distinct()
+                .ToList();
+
+            var newOwners = lines
+                .Where(l => l.Part != null)
+                .Select(l => l.Part!.Owner)
+                .Distinct()
+                .ToList();
+
+            foreach (var newOwner in newOwners)
+            {
+                if (existingOwners.Count > 0 && !existingOwners.Contains(newOwner))
+                    return BadRequest(new ApiError(
+                        $"Pallet '{req.PalletId}' มีสินค้าของ '{existingOwners[0]}' อยู่แล้ว ไม่สามารถเพิ่มสินค้าของ '{newOwner}' ได้",
+                        "สินค้าใน Pallet ต้องเป็นของบริษัท (Owner) เดียวกันเท่านั้น"));
+            }
+
+            // ── ตรวจ Part ซ้ำ: ถ้ามี Part เดียวกันใน Pallet แล้ว ต้องเป็น Batch เดียวกัน ──
+            foreach (var line in lines)
+            {
+                var duplicateInPallet = existingLinesInPallet
+                    .Where(l => l.PartId == line.PartId)
+                    .ToList();
+
+                if (duplicateInPallet.Count > 0)
+                {
+                    var existingBatch = duplicateInPallet.First().LotNumber;
+                    if (line.LotNumber != existingBatch)
+                        return BadRequest(new ApiError(
+                            $"Pallet '{req.PalletId}' มีสินค้า '{line.PartId}' Batch '{existingBatch}' อยู่แล้ว ไม่สามารถเพิ่ม Batch '{line.LotNumber}' ได้",
+                            "สินค้าชนิดเดียวกันใน Pallet ต้องเป็น Batch เดียวกันเท่านั้น"));
+                }
+            }
         }
 
         // ── ผูก Pallet ────────────────────────────
