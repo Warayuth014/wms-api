@@ -255,10 +255,12 @@ public record ScanPalletForPutawayResponse(
 public record ConfirmPutawayRequest(
     string StationId,
     string PalletId,
-    string Destination,       // ASRS | PREWORK
+    string Destination,          // ASRS | PREWORK | REPLENISH
     string OperatorId,
-    bool ConvertToFG = true   // PW-STN: true = convert PW→FG ก่อนส่ง, false = ส่ง ASRS แบบยังเป็น PW
+    bool WrappingRequired = false, // true = ผ่าน Wrapping Machine ก่อน (ใช้กับ ASRS เท่านั้น)
+    bool ConvertToFG = true        // PW-STN: true = convert PW→FG ก่อนส่ง
 );
+
 
 public record ConfirmPutawayResponse(
     bool Success,

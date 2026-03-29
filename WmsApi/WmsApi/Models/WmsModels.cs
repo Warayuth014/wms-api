@@ -281,8 +281,9 @@ public class PutawaySession
     public int PutawayId { get; set; }
     public string PalletId { get; set; } = string.Empty;
     public string StationId { get; set; } = string.Empty;
-    public string Destination { get; set; } = string.Empty; // ASRS | PREWORK
-    public string Status { get; set; } = "AGV_DISPATCHED";  // AGV_DISPATCHED | COMPLETED
+    public string Destination { get; set; } = string.Empty; // ASRS | PREWORK | REPLENISH
+    public string Status { get; set; } = "AGV_DISPATCHED";  // WRAPPING | AGV_DISPATCHED | COMPLETED
+    public bool WrappingRequired { get; set; } = false;
     public string OperatorId { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
@@ -293,6 +294,47 @@ public class PutawaySession
 
     [ForeignKey(nameof(OperatorId))]
     public User? Operator { get; set; }
+}
+
+[Table("WrappingSessions", Schema = "putaway")]
+public class WrappingSession
+{
+    [Key]
+    public int WrappingId { get; set; }
+    public int PutawayId { get; set; }
+    [Column(TypeName = "nvarchar(50)")]
+    public string PalletId { get; set; } = string.Empty;
+    public string Status { get; set; } = "PENDING"; // PENDING | COMPLETED
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAt { get; set; }
+
+    // Navigation
+    [ForeignKey(nameof(PutawayId))]
+    public PutawaySession? PutawaySession { get; set; }
+
+    [ForeignKey(nameof(PalletId))]
+    public Pallet? Pallet { get; set; }
+}
+
+[Table("ShipXQueue", Schema = "putaway")]
+public class ShipXQueue
+{
+    [Key]
+    public int QueueId { get; set; }
+    public int PutawayId { get; set; }
+    [Column(TypeName = "nvarchar(50)")]
+    public string PalletId { get; set; } = string.Empty;
+    public string Payload { get; set; } = string.Empty; // JSON — ข้อมูลที่จะส่งให้ SHIP-X
+    public string Status { get; set; } = "QUEUED";      // QUEUED | SENT | FAILED
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? SentAt { get; set; }
+
+    // Navigation
+    [ForeignKey(nameof(PutawayId))]
+    public PutawaySession? PutawaySession { get; set; }
+
+    [ForeignKey(nameof(PalletId))]
+    public Pallet? Pallet { get; set; }
 }
 
 // =============================================
