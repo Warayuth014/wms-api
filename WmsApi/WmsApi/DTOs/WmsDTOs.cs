@@ -255,10 +255,12 @@ public record ScanPalletForPutawayResponse(
 public record ConfirmPutawayRequest(
     string StationId,
     string PalletId,
-    string Destination,       // ASRS | PREWORK
+    string Destination,          // ASRS | PREWORK | REPLENISH
     string OperatorId,
-    bool ConvertToFG = true   // PW-STN: true = convert PW→FG ก่อนส่ง, false = ส่ง ASRS แบบยังเป็น PW
+    bool WrappingRequired = false, // true = ผ่าน Wrapping Machine ก่อน (ใช้กับ ASRS เท่านั้น)
+    bool ConvertToFG = true        // PW-STN: true = convert PW→FG ก่อนส่ง
 );
+
 
 public record ConfirmPutawayResponse(
     bool Success,
@@ -273,33 +275,6 @@ public record RecallToPreworkRequest(
     string PalletId,
     string StationId,       // PW-STN ที่จะรับ
     string OperatorId
-);
-
-// =============================================
-// 4.4 Cancel
-// =============================================
-
-public record CancelRequest(
-    string RefType,        // ReceiptLine | UnloadLine | BasketLine
-    int RefId,
-    string Reason,
-    string RequestBy
-);
-
-public record ApproveCancelRequest(
-    int CancelId,
-    string ApprovedBy
-);
-
-public record CancelLogResponse(
-    int CancelId,
-    string RefType,
-    int RefId,
-    string Reason,
-    string RequestBy,
-    string? ApprovedBy,
-    string Status,
-    DateTime? CancelledAt
 );
 
 // =============================================
@@ -384,21 +359,6 @@ public record GroupedConfirmedItemResponse(
     int TotalQty
 );
 
-// ── Loaded Basket Items ────────────────────
-public record LoadedBasketItemResponse(
-    int LineId,
-    string PartId,
-    string PalletId,
-    string Owner,
-    string ItemDesc,
-    string? ImageUrl,
-    int QtyLoaded,
-    string? LotNumber,
-    string BasketId,
-    string BasketLabel,
-    string? BasketDestination
-);
-
 // ── Return Basket ──────────────────────────
 public record ReturnBasketRequest(
     string BasketId,
@@ -438,66 +398,12 @@ public record LoadBasketResponse2(
 // 4.6 Picking
 // =============================================
 
-// ── Open Picking Session ─────────────────────
-public record OpenPickingRequest(
-    string PackPalletId,
-    string OperatorId
-);
-
+// ── Active Session Response ─────────────────
 public record OpenPickingResponse(
     int SessionId,
     string PackPalletId,
     string Status,
     List<PickingLineResponse> PickedLines
-);
-
-// ── Scan Source (Pallet หรือ Basket) ─────────
-public record ScanSourceResponse(
-    string SourceId,
-    string SourceType,     // PALLET | BASKET
-    string Type,           // FG | PW | - (pallet type) หรือ basket label
-    string Status,
-    List<SourceItemResponse> Items,
-    string Message
-);
-
-public record SourceItemResponse(
-    string PartId,
-    string Owner,
-    string Brand,
-    string ItemDesc,
-    string? ImageUrl,
-    string? LotNumber,
-    string? ExpiredDate,
-    int Qty,
-    string Condition
-);
-
-// ── Pick Item ────────────────────────────────
-public record PickItemRequest(
-    int SessionId,
-    string SourceId,       // Pallet ID or Basket ID
-    string SourceType,     // PALLET | BASKET
-    string PartId,
-    int QtyPicked,
-    string OperatorId
-);
-
-public record PickItemResponse(
-    bool Success,
-    int LineId,
-    string PartId,
-    int QtyPicked,
-    int RemainingOnSource,
-    string Message
-);
-
-// ── Return Source (Pallet หรือ Basket) ───────
-public record ReturnSourceRequest(
-    string SourceId,
-    string SourceType,     // PALLET | BASKET
-    string OperatorId,
-    string Destination = "ASRS"  // ASRS | ZONE_PICK
 );
 
 // ── Request Pallet from ASRS (simulation) ───

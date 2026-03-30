@@ -64,6 +64,7 @@ public class SimulationController(WmsDbContext db) : ControllerBase
             pallet.Status = dest switch
             {
                 "PREWORK" => "PREWORK",        // ถึง Prework → รอติดฉลาก
+                "REPLENISH" => "STORED",       // ถึง Replenish Rack → เก็บที่ Rack
                 "PICK_STATION" => "AVAILABLE",  // ถึง Pick Station → พร้อม pick
                 "UNLOAD_STATION" => "FG",       // ถึง Unload Station → พร้อม unload
                 _ => "AVAILABLE",
@@ -105,16 +106,28 @@ public class SimulationController(WmsDbContext db) : ControllerBase
             putaway.CompletedAt = DateTime.UtcNow;
         }
 
-        // ถ้า pallet มีของ → STORED, ถ้าว่าง → AVAILABLE
+        // กำหนด location ตาม destination จริง
+        var dest = putaway?.Destination ?? "ASRS";
         var hasItems = await db.ReceiptLines.AnyAsync(l => l.PalletId == palletId);
-        pallet.Status = hasItems ? "STORED" : "AVAILABLE";
-        pallet.Location = "ASRS";
+
+        if (dest == "REPLENISH")
+        {
+            // Replenish → Pallet อยู่ที่ Rack ไม่ใช่ ASRS
+            pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+            pallet.Location = "REPLENISH";
+        }
+        else
+        {
+            // ASRS — ถ้ามีของ = STORED, ว่าง = AVAILABLE
+            pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+            pallet.Location = "ASRS";
+        }
         pallet.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
 
         return Ok(new ApiSuccess(true,
-            $"📦 ASRS รับ Pallet '{palletId}' เข้าเก็บแล้ว (Location: ASRS, Status: {pallet.Status})"));
+            $"📦 Pallet '{palletId}' ถึงปลายทาง {pallet.Location} แล้ว (Status: {pallet.Status})"));
     }
 
     /// <summary>
