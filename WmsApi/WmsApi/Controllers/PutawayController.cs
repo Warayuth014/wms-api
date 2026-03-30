@@ -129,6 +129,15 @@ public class PutawayController(WmsDbContext db) : ControllerBase
                 l.Condition = "FG";
         }
 
+        // ── เช็คว่า Station ว่างหรือไม่ ─────────
+        var busySession = await db.PutawaySessions
+            .FirstOrDefaultAsync(s => s.StationId == req.StationId.ToUpper()
+                                   && s.Status == "AGV_DISPATCHED");
+        if (busySession is not null)
+            return BadRequest(new ApiError(
+                $"Station '{req.StationId}' ไม่ว่าง",
+                $"มี Pallet '{busySession.PalletId}' อยู่ที่ Station นี้แล้ว กรุณารอ AGV มารับก่อน"));
+
         // ── สร้าง PutawaySession ────────────────
         var session = new PutawaySession
         {
@@ -222,6 +231,56 @@ public class PutawayController(WmsDbContext db) : ControllerBase
     }
 
     // =============================================
+    // GET /api/putaway/station-status
+    // ดึงสถานะ Station ทั้งหมด (pallet ที่ AGV_DISPATCHED อยู่)
+    // =============================================
+    [HttpGet("station-status")]
+    public async Task<IActionResult> GetStationStatus()
+    {
+        var activeSessions = await db.PutawaySessions
+            .Where(s => s.Status == "AGV_DISPATCHED")
+            .Select(s => new
+            {
+                s.StationId,
+                s.PalletId,
+                s.Destination,
+                s.CreatedAt
+            })
+            .ToListAsync();
+
+        // ดึงข้อมูลสินค้าบน pallet ที่ยังอยู่ใน station
+        var palletIds = activeSessions.Select(s => s.PalletId).Distinct().ToList();
+        var palletItems = await db.ReceiptLines
+            .Include(l => l.Part)
+            .Where(l => palletIds.Contains(l.PalletId) && l.Status == "PALLETIZED")
+            .GroupBy(l => l.PalletId)
+            .Select(g => new
+            {
+                PalletId = g.Key,
+                Items = g.Select(l => new
+                {
+                    l.PartId,
+                    l.Part!.ItemDesc,
+                    Qty = l.QtyReceived
+                }).ToList()
+            })
+            .ToListAsync();
+
+        var palletItemsDict = palletItems.ToDictionary(p => p.PalletId, p => p.Items);
+
+        var result = activeSessions.Select(s => new
+        {
+            s.StationId,
+            s.PalletId,
+            s.Destination,
+            s.CreatedAt,
+            Items = palletItemsDict.GetValueOrDefault(s.PalletId, [])
+        });
+
+        return Ok(result);
+    }
+
+    // =============================================
     // POST /api/putaway/recall-to-prework
     // เรียก PW Pallet กลับจาก ASRS → Prework Station
     // (กรณีจุด Prework เริ่มว่างแล้ว)
@@ -244,13 +303,22 @@ public class PutawayController(WmsDbContext db) : ControllerBase
                 $"Pallet '{req.PalletId}' ไม่ได้อยู่ใน ASRS (ตำแหน่ง: {pallet.Location})",
                 "Pallet ต้องอยู่ใน ASRS จึงจะเรียกกลับได้"));
 
-        if (pallet.Status is not ("IN_TRANSIT" or "RETURNING"))
+        if (pallet.Status is not ("IN_TRANSIT" or "RETURNING" or "STORED"))
             return BadRequest(new ApiError(
                 $"Pallet '{req.PalletId}' ไม่พร้อมเรียกกลับ (สถานะ: {pallet.Status})"));
 
         var operator_ = await db.Users.FindAsync(req.OperatorId);
         if (operator_ is null)
             return NotFound(new ApiError($"User '{req.OperatorId}' not found."));
+
+        // เช็คว่า Station ว่างหรือไม่
+        var busySession = await db.PutawaySessions
+            .FirstOrDefaultAsync(s => s.StationId == req.StationId.ToUpper()
+                                   && s.Status == "AGV_DISPATCHED");
+        if (busySession is not null)
+            return BadRequest(new ApiError(
+                $"Station '{req.StationId}' ไม่ว่าง",
+                $"มี Pallet '{busySession.PalletId}' อยู่ที่ Station นี้แล้ว กรุณารอ AGV มารับก่อน"));
 
         // สร้าง PutawaySession สำหรับ recall
         var session = new PutawaySession

@@ -477,7 +477,7 @@ public class UnloadController(WmsDbContext db) : ControllerBase
             {
                 pallet.Type = null;
                 pallet.Status = "AVAILABLE";
-                pallet.Location = "ASRS";  // ส่งกลับ ASRS หลัง unload ครบ
+                pallet.Location = null;  // pallet เปล่า ยังอยู่ที่สถานี Unload
                 pallet.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -701,37 +701,6 @@ public class UnloadController(WmsDbContext db) : ControllerBase
             QtyRemaining: qtyRemaining,
             Message: $"✅ Load {req.PartId} x{req.Qty} เข้า {req.BasketId} สำเร็จ"
         ));
-    }
-
-    // =============================================
-    // GET /api/unload/loaded-items
-    // ดึงสินค้าที่ load ลง basket แล้ว แต่ยังไม่ได้คืนตะกร้า
-    // =============================================
-    [HttpGet("loaded-items")]
-    public async Task<IActionResult> GetLoadedItems()
-    {
-        var items = await (
-            from bl in db.BasketLines
-            join b in db.Baskets on bl.BasketId equals b.BasketId
-            join p in db.Parts on bl.PartId equals p.PartId
-            where bl.Status == "LOADED"
-            orderby bl.PartId
-            select new LoadedBasketItemResponse(
-                bl.LineId,
-                bl.PartId,
-                bl.PalletId,
-                p.Owner,
-                p.ItemDesc,
-                p.ImageUrl,
-                bl.QtyLoaded,
-                null,
-                bl.BasketId,
-                b.Label,
-                b.Destination
-            )
-        ).ToListAsync();
-
-        return Ok(items);
     }
 
     // =============================================
