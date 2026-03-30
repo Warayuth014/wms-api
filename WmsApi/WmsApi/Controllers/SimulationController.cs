@@ -64,7 +64,7 @@ public class SimulationController(WmsDbContext db) : ControllerBase
             pallet.Status = dest switch
             {
                 "PREWORK" => "PREWORK",        // ถึง Prework → รอติดฉลาก
-                "REPLENISH" => "STORED",       // ถึง Replenish Rack → เก็บที่ Rack
+                "REPLENISH" => "REPLENISH",     // ถึง Replenish Rack → รอ Unload
                 "PICK_STATION" => "AVAILABLE",  // ถึง Pick Station → พร้อม pick
                 "UNLOAD_STATION" => "FG",       // ถึง Unload Station → พร้อม unload
                 _ => "AVAILABLE",
@@ -112,8 +112,8 @@ public class SimulationController(WmsDbContext db) : ControllerBase
 
         if (dest == "REPLENISH")
         {
-            // Replenish → Pallet อยู่ที่ Rack ไม่ใช่ ASRS
-            pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+            // Replenish → Status = "REPLENISH" (ป้องกันไม่ให้ scan Putaway ซ้ำ, รอ Unload)
+            pallet.Status = hasItems ? "REPLENISH" : "AVAILABLE";
             pallet.Location = "REPLENISH";
         }
         else

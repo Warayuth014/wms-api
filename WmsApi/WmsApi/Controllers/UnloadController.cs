@@ -21,8 +21,8 @@ public class UnloadController(WmsDbContext db) : ControllerBase
         if (pallet is null)
             return NotFound(new ApiError($"Pallet '{palletId}' not found."));
 
-        // ปฏิเสธเฉพาะสถานะที่ไม่มีของบน Pallet
-        if (pallet.Status is "AVAILABLE" or "DONE" or "RETURNING")
+        // รับเฉพาะสถานะที่มีของและพร้อม Unload
+        if (pallet.Status is not ("FG" or "PW" or "UNLOADING" or "REPLENISH"))
             return BadRequest(new ApiError(
                 $"Pallet '{palletId}' ไม่พร้อม Unload (สถานะ: {pallet.Status})"));
 
@@ -134,10 +134,10 @@ public class UnloadController(WmsDbContext db) : ControllerBase
             ));
         }
 
-        // อนุญาต FG, PW, IN_TRANSIT (มาจาก ASRS)
-        if (pallet.Status is not ("FG" or "PW" or "IN_TRANSIT"))
+        // อนุญาต FG, PW, IN_TRANSIT, REPLENISH (อยู่ที่ Replenish Rack)
+        if (pallet.Status is not ("FG" or "PW" or "IN_TRANSIT" or "REPLENISH"))
             return BadRequest(new ApiError(
-                $"Pallet must be FG / PW / IN_TRANSIT to unload (current: {pallet.Status})."));
+                $"Pallet must be FG / PW / IN_TRANSIT / REPLENISH to unload (current: {pallet.Status})."));
 
         var operator_ = await db.Users.FindAsync(req.OperatorId);
         if (operator_ is null)
@@ -545,15 +545,15 @@ public class UnloadController(WmsDbContext db) : ControllerBase
             // ยังมีของเหลือ → set Type ตาม condition ของสินค้าที่ยังอยู่
             var condition = remainingLines.First().Condition; // FG หรือ PW
             pallet.Type = condition;
-            pallet.Status = "IN_TRANSIT";
-            pallet.Location = "ASRS";
+            pallet.Status = "REPLENISH";
+            pallet.Location = "REPLENISH";
         }
         else
         {
             // ไม่มีของเหลือ → ว่างเปล่า พร้อมใช้ใหม่
             pallet.Type = null;
             pallet.Status = "AVAILABLE";
-            pallet.Location = "ASRS";
+            pallet.Location = null;
         }
         pallet.UpdatedAt = DateTime.UtcNow;
 

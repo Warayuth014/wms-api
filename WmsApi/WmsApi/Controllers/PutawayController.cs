@@ -275,9 +275,9 @@ public class PutawayController(WmsDbContext db) : ControllerBase
             s.Destination,
             s.CreatedAt,
             Items = palletItemsDict.GetValueOrDefault(s.PalletId, [])
-        });
+        }).ToList();
 
-        return Ok(result);
+        return Ok(new { items = result });
     }
 
     // =============================================
