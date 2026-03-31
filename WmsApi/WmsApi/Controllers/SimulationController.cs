@@ -116,6 +116,11 @@ public class SimulationController(WmsDbContext db) : ControllerBase
             pallet.Status = hasItems ? "REPLENISH" : "AVAILABLE";
             pallet.Location = "REPLENISH";
         }
+        else if (dest == "PREWORK")
+        {
+            pallet.Status = hasItems ? "PREWORK" : "AVAILABLE";
+            pallet.Location = "PREWORK";
+        }
         else
         {
             // ASRS — ถ้ามีของ = STORED, ว่าง = AVAILABLE

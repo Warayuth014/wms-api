@@ -21,10 +21,10 @@ public class UnloadController(WmsDbContext db) : ControllerBase
         if (pallet is null)
             return NotFound(new ApiError($"Pallet '{palletId}' not found."));
 
-        // รับเฉพาะสถานะที่มีของและพร้อม Unload
-        if (pallet.Status is not ("FG" or "PW" or "UNLOADING" or "REPLENISH"))
+        // รับเฉพาะ REPLENISH หรือ UNLOADING (resume)
+        if (pallet.Status is not ("REPLENISH" or "UNLOADING"))
             return BadRequest(new ApiError(
-                $"Pallet '{palletId}' ไม่พร้อม Unload (สถานะ: {pallet.Status})"));
+                $"Pallet '{palletId}' ไม่พร้อม Unload (สถานะ: {pallet.Status}) — ต้องเป็น REPLENISH เท่านั้น"));
 
         // ดึงสินค้าที่อยู่บน Pallet
         var lines = await db.ReceiptLines
@@ -134,10 +134,10 @@ public class UnloadController(WmsDbContext db) : ControllerBase
             ));
         }
 
-        // อนุญาต FG, PW, IN_TRANSIT, REPLENISH (อยู่ที่ Replenish Rack)
-        if (pallet.Status is not ("FG" or "PW" or "IN_TRANSIT" or "REPLENISH"))
+        // อนุญาตเฉพาะ REPLENISH เท่านั้น
+        if (pallet.Status is not "REPLENISH")
             return BadRequest(new ApiError(
-                $"Pallet must be FG / PW / IN_TRANSIT / REPLENISH to unload (current: {pallet.Status})."));
+                $"Pallet ต้องเป็นสถานะ REPLENISH เท่านั้นถึงจะ Unload ได้ (ปัจจุบัน: {pallet.Status})"));
 
         var operator_ = await db.Users.FindAsync(req.OperatorId);
         if (operator_ is null)
