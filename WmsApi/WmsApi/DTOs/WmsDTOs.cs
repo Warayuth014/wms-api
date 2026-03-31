@@ -548,3 +548,69 @@ public record TestOrderItem(
     string PartId,
     int Qty            // จำนวนที่ต้องการ pick
 );
+// =============================================
+// Replenishment
+// =============================================
+
+// ── Check Trigger ─────────────────────────────
+public record ReplenishTriggerItem(
+    string PartId, string Owner, string Brand, string ItemDesc, string? ImageUrl,
+    int QtyOnHand, int MinStock, int MaxStock, int QtyRequired
+);
+public record CheckTriggerResponse(int PartsNeedingReplenishment, List<ReplenishTriggerItem> Items);
+
+// ── Replenish Order ───────────────────────────
+public record CreateReplenishOrderRequest(string TriggeredBy, List<CreateReplenishLineRequest> Lines);
+public record CreateReplenishLineRequest(string PartId, int QtyRequired);
+public record ReplenishOrderResponse(
+    int OrderId, string Status, string TriggeredBy, DateTime CreatedAt,
+    List<ReplenishOrderLineDto> Lines
+);
+public record ReplenishOrderLineDto(
+    int LineId, string PartId, string Owner, string Brand, string ItemDesc,
+    string? ImageUrl, int QtyRequired, int QtyFilled, string Status
+);
+
+// ── Tote Scan ─────────────────────────────────
+public record ToteScanResponse(
+    string ToteId, string Label, string Status, string Location,
+    List<ToteInventoryItemDto> CurrentInventory
+);
+public record ToteInventoryItemDto(string PartId, string ItemDesc, int QtyOnHand);
+
+// ── Open Session ──────────────────────────────
+public record OpenReplenishSessionRequest(int OrderId, string ToteId, string PalletId, string OperatorId);
+public record ReplenishSessionResponse(
+    int SessionId, int OrderId, string ToteId, string PalletId, string Status,
+    List<ReplenishSessionLineDto> Lines
+);
+public record ReplenishSessionLineDto(
+    int LineId, string PartId, string Owner, string Brand, string ItemDesc,
+    string? ImageUrl, int OrderLineId, int QtyRequired, int QtyFilled,
+    string SessionLineStatus, string OrderLineStatus
+);
+
+// ── Confirm Line ──────────────────────────────
+public record ConfirmReplenishLineRequest(int SessionId, int SessionLineId, int QtyFilled);
+public record ConfirmReplenishLineResponse(
+    int SessionLineId, string PartId, int QtyFilled,
+    string SessionLineStatus, string OrderLineStatus,
+    int OrderLineQtyFilled, int OrderLineQtyRequired
+);
+
+// ── Complete Session ──────────────────────────
+public record CompleteReplenishSessionRequest(int SessionId);
+public record CompleteReplenishSessionResponse(
+    bool Success, string OrderStatus, int TotalLinesCompleted,
+    List<ToteInventoryItemDto> UpdatedInventory, string Message
+);
+
+// ── Haipick (internal API) ────────────────────
+public record HaipickInventoryItem(
+    string PartId, string Owner, string Brand, string ItemDesc,
+    int TotalQtyOnHand, List<ToteBreakdownItem> ToteBreakdown
+);
+public record ToteBreakdownItem(string ToteId, string Label, int QtyOnHand);
+public record HaipickInventoryResponse(List<HaipickInventoryItem> Items);
+public record ReceiveToteRequest(string ToteId, List<ReceiveToteItem> Items);
+public record ReceiveToteItem(string PartId, int QtyOnHand);

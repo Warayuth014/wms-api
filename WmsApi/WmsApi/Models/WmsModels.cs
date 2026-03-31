@@ -42,6 +42,8 @@ public class Part
     public string Brand { get; set; } = string.Empty;
     public string ItemDesc { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }                 // /uploads/parts/xxx.jpg
+    public int? MinStock { get; set; }                    // เติมเมื่อ OnHand < MinStock
+    public int? MaxStock { get; set; }                    // เติมให้ถึง MaxStock
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -268,6 +270,141 @@ public class BasketLine
 
     [ForeignKey(nameof(OperatorId))]
     public User? Operator { get; set; }
+}
+
+// =============================================
+// Schema: master (Tote + Inventory)
+// =============================================
+
+[Table("Totes", Schema = "master")]
+public class Tote
+{
+    [Key]
+    [Column(TypeName = "nvarchar(50)")]
+    public string ToteId { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string Status { get; set; } = "AVAILABLE";    // AVAILABLE | IN_USE | REPLENISHING
+    public string Location { get; set; } = "STORAGE";    // STORAGE | REPLENISH_STATION
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    // Navigation
+    public ICollection<ToteInventory> Inventory { get; set; } = [];
+    public ICollection<ReplenishSession> ReplenishSessions { get; set; } = [];
+}
+
+[Table("ToteInventory", Schema = "master")]
+public class ToteInventory
+{
+    [Key]
+    public int InventoryId { get; set; }
+    [Column(TypeName = "nvarchar(50)")]
+    public string ToteId { get; set; } = string.Empty;
+    [Column(TypeName = "nvarchar(50)")]
+    public string PartId { get; set; } = string.Empty;
+    public int QtyOnHand { get; set; } = 0;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    // Navigation
+    [ForeignKey(nameof(ToteId))]
+    public Tote? Tote { get; set; }
+
+    [ForeignKey(nameof(PartId))]
+    public Part? Part { get; set; }
+}
+
+// =============================================
+// Schema: flow2 (Replenish)
+// =============================================
+
+[Table("ReplenishOrders", Schema = "flow2")]
+public class ReplenishOrder
+{
+    [Key]
+    public int OrderId { get; set; }
+    public string Status { get; set; } = "PENDING";      // PENDING | IN_PROGRESS | COMPLETED
+    public string TriggeredBy { get; set; } = "SYSTEM";  // SYSTEM | MANUAL
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAt { get; set; }
+
+    // Navigation
+    public ICollection<ReplenishOrderLine> Lines { get; set; } = [];
+}
+
+[Table("ReplenishOrderLines", Schema = "flow2")]
+public class ReplenishOrderLine
+{
+    [Key]
+    public int LineId { get; set; }
+    public int OrderId { get; set; }
+    [Column(TypeName = "nvarchar(50)")]
+    public string PartId { get; set; } = string.Empty;
+    public int QtyRequired { get; set; }                  // = MaxStock - QtyOnHand
+    public int QtyFilled { get; set; } = 0;
+    public string Status { get; set; } = "PENDING";       // PENDING | PARTIAL | COMPLETED
+
+    // Navigation
+    [ForeignKey(nameof(OrderId))]
+    public ReplenishOrder? ReplenishOrder { get; set; }
+
+    [ForeignKey(nameof(PartId))]
+    public Part? Part { get; set; }
+
+    public ICollection<ReplenishSessionLine> SessionLines { get; set; } = [];
+}
+
+[Table("ReplenishSessions", Schema = "flow2")]
+public class ReplenishSession
+{
+    [Key]
+    public int SessionId { get; set; }
+    public int OrderId { get; set; }
+    [Column(TypeName = "nvarchar(50)")]
+    public string ToteId { get; set; } = string.Empty;
+    [Column(TypeName = "nvarchar(50)")]
+    public string PalletId { get; set; } = string.Empty;
+    [Column(TypeName = "nvarchar(50)")]
+    public string OperatorId { get; set; } = string.Empty;
+    public string Status { get; set; } = "OPEN";          // OPEN | COMPLETED
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAt { get; set; }
+
+    // Navigation
+    [ForeignKey(nameof(OrderId))]
+    public ReplenishOrder? ReplenishOrder { get; set; }
+
+    [ForeignKey(nameof(ToteId))]
+    public Tote? Tote { get; set; }
+
+    [ForeignKey(nameof(PalletId))]
+    public Pallet? Pallet { get; set; }
+
+    [ForeignKey(nameof(OperatorId))]
+    public User? Operator { get; set; }
+
+    public ICollection<ReplenishSessionLine> Lines { get; set; } = [];
+}
+
+[Table("ReplenishSessionLines", Schema = "flow2")]
+public class ReplenishSessionLine
+{
+    [Key]
+    public int LineId { get; set; }
+    public int SessionId { get; set; }
+    [Column(TypeName = "nvarchar(50)")]
+    public string PartId { get; set; } = string.Empty;
+    public int OrderLineId { get; set; }
+    public int QtyFilled { get; set; } = 0;
+    public string Status { get; set; } = "PENDING";       // PENDING | CONFIRMED
+
+    // Navigation
+    [ForeignKey(nameof(SessionId))]
+    public ReplenishSession? Session { get; set; }
+
+    [ForeignKey(nameof(PartId))]
+    public Part? Part { get; set; }
+
+    [ForeignKey(nameof(OrderLineId))]
+    public ReplenishOrderLine? OrderLine { get; set; }
 }
 
 // =============================================
