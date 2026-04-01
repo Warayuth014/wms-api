@@ -303,6 +303,55 @@ public class SimulationController(WmsDbContext db) : ControllerBase
             $"📦 Pallet '{req.PalletId}' ส่งกลับ {dest} เรียบร้อย (Status: {pallet.Status})"));
     }
 
+    // ─────────────────────────────────────────────
+    //  Prework — จำลองติดสติ๊กเกอร์ + แมพลง Pallet เปล่า
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// จำลองขั้นตอน: คนงานเอาสินค้าที่ตัดยอด (PW) ไปติดสติ๊กเกอร์
+    /// แล้วแมพลง Pallet เปล่า → สินค้าเปลี่ยนเป็น FG พร้อมส่ง ASRS
+    /// </summary>
+    [HttpPost("prework/label-and-repalletize")]
+    public async Task<IActionResult> PreworkLabelAndRepalletize([FromBody] PreworkRepalletizeRequest req)
+    {
+        // 1. หา Pallet เปล่า
+        var pallet = await db.Pallets.FindAsync(req.PalletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
+
+        if (pallet.Status != "AVAILABLE")
+            return BadRequest(new ApiError(
+                $"Pallet '{req.PalletId}' ไม่ว่าง (สถานะ: {pallet.Status})"));
+
+        // 2. หา ReceiptLines ที่ตัดยอดแล้ว (PREWORK_RECEIVED, PalletId=null)
+        var lines = await db.ReceiptLines
+            .Where(l => l.Status == "PREWORK_RECEIVED" && l.PalletId == null)
+            .ToListAsync();
+
+        if (lines.Count == 0)
+            return BadRequest(new ApiError("ไม่มีสินค้าที่ตัดยอดรอแมพ (PREWORK_RECEIVED)"));
+
+        // 3. แมพสินค้าลง Pallet + เปลี่ยน PW → FG
+        foreach (var line in lines)
+        {
+            line.PalletId = req.PalletId;
+            line.Condition = "FG";
+            line.Status = "PALLETIZED";
+            line.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // 4. Update Pallet → PW + PREWORK (เพื่อให้ PW-STN-2,4,6 scan ได้)
+        pallet.Type = "PW";
+        pallet.Status = "PREWORK";
+        pallet.Location = "PREWORK";
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"🏷️ ติดสติ๊กเกอร์เสร็จ — แมพ {lines.Count} รายการลง Pallet '{req.PalletId}' (PW→FG) พร้อมส่ง ASRS จาก PW-STN-2/4/6"));
+    }
+
 }
 
 
@@ -321,4 +370,8 @@ public record AsrsRetrieveRequest(
 public record PalletReturnCompleteRequest(
     string PalletId,
     string? Destination  // ASRS | ZONE_PICK
+);
+
+public record PreworkRepalletizeRequest(
+    string PalletId      // Pallet เปล่าที่จะแมพสินค้าลง
 );
