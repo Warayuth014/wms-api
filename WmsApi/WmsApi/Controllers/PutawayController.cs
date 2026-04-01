@@ -409,10 +409,14 @@ public class PutawayController(WmsDbContext db) : ControllerBase
                     CutItems = Array.Empty<object>()
                 };
 
-            // เฉพาะ log ของ pallet นี้ + station นี้เท่านั้น
-            var logs = cutLogs
+            // เฉพาะ log ของ pallet นี้ + station นี้ รอบล่าสุดเท่านั้น
+            var allLogs = cutLogs
                 .Where(c => c.PalletId == pallet.PalletId && c.StationId == stationId)
                 .ToList();
+            var latestCutAt = allLogs.FirstOrDefault()?.CutAt;
+            var logs = latestCutAt is null
+                ? allLogs
+                : allLogs.Where(c => (latestCutAt.Value - c.CutAt).TotalSeconds < 5).ToList();
             return new
             {
                 StationId = stationId,
