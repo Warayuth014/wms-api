@@ -277,6 +277,39 @@ public record RecallToPreworkRequest(
     string OperatorId
 );
 
+// ── Prework Receive & Return ────────────────
+public record PreworkReceiveRequest(
+    string PalletId,
+    string StationId,
+    string OperatorId
+);
+
+public record PreworkReceiveItemResponse(
+    string PartId,
+    string Owner,
+    string Brand,
+    string ItemDesc,
+    string? ImageUrl,
+    string? LotNumber,
+    string? ExpiredDate,
+    int Qty,
+    string Condition
+);
+
+public record PreworkReceiveResponse(
+    bool Success,
+    string PalletId,
+    string StationId,
+    List<PreworkReceiveItemResponse> Items,
+    string Message
+);
+
+public record PreworkReturnPalletRequest(
+    string PalletId,
+    string StationId,
+    string OperatorId
+);
+
 // =============================================
 // 4.5 Return — Flow 1
 // =============================================

@@ -118,8 +118,51 @@ public class SimulationController(WmsDbContext db) : ControllerBase
         }
         else if (dest == "PREWORK")
         {
-            pallet.Status = hasItems ? "PREWORK" : "AVAILABLE";
-            pallet.Location = "PREWORK";
+            // Location ถูกแมพไว้แล้วตอน confirm (PW-STN-x) — ใช้ต่อเลย
+            var stationId = pallet.Location ?? "PREWORK";
+
+            if (!hasItems)
+            {
+                pallet.Status = "AVAILABLE";
+                pallet.Location = null;
+            }
+            else
+            {
+                // ── Auto-cut: ตัดยอด ReceiptLines ออกจาก Pallet ทันที ──
+                var lines = await db.ReceiptLines
+                    .Include(l => l.Part)
+                    .Where(l => l.PalletId == palletId && l.Status == "PALLETIZED")
+                    .ToListAsync();
+
+                foreach (var line in lines)
+                {
+                    // บันทึก PreworkCutLog
+                    db.PreworkCutLogs.Add(new PreworkCutLog
+                    {
+                        PalletId = palletId,
+                        StationId = stationId,
+                        PartId = line.PartId,
+                        Owner = line.Part?.Owner,
+                        Brand = line.Part?.Brand,
+                        ItemDesc = line.Part?.ItemDesc,
+                        ImageUrl = line.Part?.ImageUrl,
+                        Qty = line.QtyReceived,
+                        LotNumber = line.LotNumber,
+                        ExpiredDate = line.ExpiredDate,
+                        Condition = line.Condition,
+                        OperatorId = putaway?.OperatorId ?? "SYSTEM",
+                        CutAt = DateTime.UtcNow,
+                    });
+
+                    // ตัดยอด — เปลี่ยน status + ปลด PalletId
+                    line.Status = "PREWORK_RECEIVED";
+                    line.PalletId = null;
+                    line.UpdatedAt = DateTime.UtcNow;
+                }
+
+                // Pallet ว่างแล้ว รอคืน (Location ยังเป็น PW-STN-x เดิม)
+                pallet.Status = "PREWORK_EMPTY";
+            }
         }
         else
         {

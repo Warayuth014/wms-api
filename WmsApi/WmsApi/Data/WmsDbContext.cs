@@ -39,6 +39,7 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<PutawaySession> PutawaySessions { get; set; }
     public DbSet<WrappingSession> WrappingSessions { get; set; }
     public DbSet<ShipXQueue> ShipXQueues { get; set; }
+    public DbSet<PreworkCutLog> PreworkCutLogs { get; set; }
 
     // ── picking (v1) ─────────────────────────
     public DbSet<PickingSession> PickingSessions { get; set; }
@@ -294,6 +295,19 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .HasOne(x => x.Pallet)
             .WithMany()
             .HasForeignKey(x => x.PalletId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ── PreworkCutLog ───────────────────
+        mb.Entity<PreworkCutLog>()
+            .HasOne(x => x.Pallet)
+            .WithMany()
+            .HasForeignKey(x => x.PalletId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<PreworkCutLog>()
+            .HasOne(x => x.Part)
+            .WithMany()
+            .HasForeignKey(x => x.PartId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // ── PickingSession ───────────────────
