@@ -25,18 +25,24 @@ public class PutawayController(WmsDbContext db) : ControllerBase
         if (pallet is null)
             return NotFound(new ApiError($"Pallet '{palletId}' not found."));
 
-        // FG/PW = รับของแล้วรอเก็บ, PREWORK = อยู่ที่ Prework รอ convert แล้วส่ง ASRS
-        if (pallet.Status is not ("FG" or "PW"))
-            return BadRequest(new ApiError(
-                $"Pallet '{palletId}' ไม่พร้อม Putaway (สถานะปัจจุบัน: {pallet.Status})",
-                "Pallet ต้องเป็นสถานะ FG, PW เท่านั้น"));
-
-        // PW-STN → บังคับให้ pallet ต้องผ่าน STN→PREWORK มาก่อน
         var isPWStation = stationId?.StartsWith("PW-STN", StringComparison.OrdinalIgnoreCase) ?? false;
-        if (isPWStation && pallet.Status != "PREWORK")
-            return BadRequest(new ApiError(
-                $"Pallet '{palletId}' ยังไม่ได้อยู่ที่ Prework (สถานะ: {pallet.Status})",
-                "ต้องนำ Pallet ไปที่ Prework ก่อน โดย Putaway ที่ STN-1/2/3 → เลือก Prework"));
+
+        if (isPWStation)
+        {
+            // PW-STN-2,4,6 → ผ่านเฉพาะ PREWORK
+            if (pallet.Status != "PREWORK")
+                return BadRequest(new ApiError(
+                    $"Pallet '{palletId}' ยังไม่ได้อยู่ที่ Prework (สถานะ: {pallet.Status})",
+                    "ต้องนำ Pallet ไปที่ Prework ก่อน โดย Putaway ที่ STN-1/2/3 → เลือก Prework"));
+        }
+        else
+        {
+            // STN-1,2,3 → ผ่านเฉพาะ FG, PW
+            if (pallet.Status is not ("FG" or "PW"))
+                return BadRequest(new ApiError(
+                    $"Pallet '{palletId}' ไม่พร้อม Putaway (สถานะปัจจุบัน: {pallet.Status})",
+                    "Pallet ต้องเป็นสถานะ FG, PW เท่านั้น"));
+        }
 
         // ดึงสินค้าบน Pallet
         var lines = await db.ReceiptLines
@@ -143,9 +149,9 @@ public class PutawayController(WmsDbContext db) : ControllerBase
         if (dest == "PREWORK")
         {
             var receiveStations = new[] { "PW-STN-1", "PW-STN-3", "PW-STN-5" };
+            // เช็คทุก pallet ที่ Location ยังอยู่ที่ PW-STN (ไม่ว่า status ใด)
             var occupiedStations = await db.Pallets
-                .Where(p => (p.Status == "IN_TRANSIT" || p.Status == "PREWORK" || p.Status == "PREWORK_EMPTY")
-                        && p.Location != null
+                .Where(p => p.Location != null
                         && receiveStations.Contains(p.Location))
                 .Select(p => p.Location!)
                 .ToListAsync();
@@ -379,10 +385,10 @@ public class PutawayController(WmsDbContext db) : ControllerBase
     {
         var receiveStations = new[] { "PW-STN-1", "PW-STN-3", "PW-STN-5" };
 
-        // ดึง pallet ที่อยู่ที่ station (IN_TRANSIT=กำลังมา, PREWORK_EMPTY=ตัดยอดแล้ว รอคืน)
+        // ดึง pallet ที่อยู่ที่ station (IN_TRANSIT=กำลังมา, AVAILABLE=ตัดยอดแล้ว รอคืน)
         var pallets = await db.Pallets
             .Where(p => receiveStations.Contains(p.Location!)
-                    && (p.Status == "IN_TRANSIT" || p.Status == "PREWORK" || p.Status == "PREWORK_EMPTY"))
+                    && (p.Status == "IN_TRANSIT" || p.Status == "PREWORK" || p.Status == "AVAILABLE"))
             .ToListAsync();
 
         // ดึง cut logs สำหรับ pallet + station ที่ตรงกันเท่านั้น
@@ -555,7 +561,7 @@ public class PutawayController(WmsDbContext db) : ControllerBase
         }
 
         // Pallet ว่างแล้ว รอคืน
-        pallet.Status = "PREWORK_EMPTY";
+        pallet.Status = "AVAILABLE";
         pallet.Location = req.StationId.ToUpper();
         pallet.UpdatedAt = DateTime.UtcNow;
 
@@ -581,9 +587,9 @@ public class PutawayController(WmsDbContext db) : ControllerBase
         if (pallet is null)
             return NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
 
-        if (pallet.Status != "PREWORK_EMPTY")
+        if (pallet.Status != "AVAILABLE")
             return BadRequest(new ApiError(
-                $"Pallet '{req.PalletId}' สถานะ '{pallet.Status}' — ต้องเป็น PREWORK_EMPTY (ตัดยอดแล้ว)"));
+                $"Pallet '{req.PalletId}' สถานะ '{pallet.Status}' — ต้องเป็น AVAILABLE (ตัดยอดแล้ว)"));
 
         pallet.Type = null;
         pallet.Status = "AVAILABLE";

@@ -161,7 +161,7 @@ public class SimulationController(WmsDbContext db) : ControllerBase
                 }
 
                 // Pallet ว่างแล้ว รอคืน (Location ยังเป็น PW-STN-x เดิม)
-                pallet.Status = "PREWORK_EMPTY";
+                pallet.Status = "AVAILABLE";
             }
         }
         else
