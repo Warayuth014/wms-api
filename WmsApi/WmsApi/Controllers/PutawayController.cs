@@ -1,15 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using WmsApi.Data;
 using WmsApi.DTOs;
+using WmsApi.Hubs;
 using WmsApi.Models;
 
 namespace WmsApi.Controllers;
 
 [ApiController]
 [Route("api/putaway")]
-public class PutawayController(WmsDbContext db) : ControllerBase
+public class PutawayController(WmsDbContext db, IHubContext<PutawayHub> hub) : ControllerBase
 {
     private static readonly HashSet<string> ValidDestinations =
         new(StringComparer.OrdinalIgnoreCase) { "ASRS", "PREWORK", "REPLENISH" };
@@ -237,6 +239,14 @@ public class PutawayController(WmsDbContext db) : ControllerBase
         pallet.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+
+        // ── SignalR: broadcast station dispatched ──
+        await hub.Clients.All.SendAsync("StationDispatched", new
+        {
+            stationId = req.StationId.ToUpper(),
+            palletId = req.PalletId,
+            destination = dest,
+        });
 
         var convertMsg = isPWStation && req.ConvertToFG ? " (PW→FG converted)" : "";
         var wrappingMsg = req.WrappingRequired ? " (ผ่าน Wrapping Machine)" : "";
@@ -597,6 +607,13 @@ public class PutawayController(WmsDbContext db) : ControllerBase
         pallet.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+
+        // ── SignalR: broadcast pallet returned ──
+        await hub.Clients.All.SendAsync("PalletReturned", new
+        {
+            stationId = req.StationId,
+            palletId = req.PalletId,
+        });
 
         return Ok(new ApiSuccess(true,
             $"✅ Pallet '{req.PalletId}' คืนเรียบร้อย (AVAILABLE)"));

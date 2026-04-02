@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
+using WmsApi.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,12 +19,16 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
-// ── CORS (Flutter) ────────────────────────────
+// ── SignalR ───────────────────────────────────
+builder.Services.AddSignalR();
+
+// ── CORS (Flutter + SignalR) ──────────────────
 builder.Services.AddCors(opts =>
     opts.AddDefaultPolicy(p => p
-        .AllowAnyOrigin()
+        .SetIsOriginAllowed(_ => true)
         .AllowAnyMethod()
-        .AllowAnyHeader()));
+        .AllowAnyHeader()
+        .AllowCredentials()));
 
 var app = builder.Build();
 
@@ -34,6 +39,7 @@ app.UseCors();
 app.UseStaticFiles();   // serve wwwroot/ (รูปภาพ, ไฟล์ static)
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<PutawayHub>("/hubs/putaway");
 app.Urls.Add("http://0.0.0.0:5000");
 
 app.Run();

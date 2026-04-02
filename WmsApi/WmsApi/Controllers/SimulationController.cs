@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.DTOs;
+using WmsApi.Hubs;
 using WmsApi.Models;
 
 namespace WmsApi.Controllers;
@@ -12,7 +14,7 @@ namespace WmsApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/simulate")]
-public class SimulationController(WmsDbContext db) : ControllerBase
+public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) : ControllerBase
 {
     // ─────────────────────────────────────────────
     //  AGV — จำลองรถขนอัตโนมัติ
@@ -174,6 +176,14 @@ public class SimulationController(WmsDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
+        // ── SignalR: broadcast pallet arrived ──
+        await hub.Clients.All.SendAsync("PalletArrived", new
+        {
+            stationId = pallet.Location,
+            palletId,
+            destination = dest,
+        });
+
         return Ok(new ApiSuccess(true,
             $"📦 Pallet '{palletId}' ถึงปลายทาง {pallet.Location} แล้ว (Status: {pallet.Status})"));
     }
@@ -308,6 +318,14 @@ public class SimulationController(WmsDbContext db) : ControllerBase
         pallet.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+
+        // ── SignalR: broadcast labeling completed ──
+        await hub.Clients.All.SendAsync("LabelingCompleted", new
+        {
+            palletId,
+            palletType = pallet.Type,
+            palletStatus = pallet.Status,
+        });
 
         return Ok(new ApiSuccess(true,
             $"🏷️ Pallet '{palletId}' ติดฉลากเสร็จ — แมพ {lines.Count} รายการ (PW → FG) พร้อม Putaway เข้า ASRS"));
