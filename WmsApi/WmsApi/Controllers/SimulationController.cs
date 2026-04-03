@@ -224,114 +224,6 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
     }
 
     // ─────────────────────────────────────────────
-    //  Labeling — จำลองการติดฉลาก PW → FG
-    // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// ติดฉลากเสร็จ → แมพสินค้า PREWORK_RECEIVED ลง Pallet + เปลี่ยนเป็น FG
-    /// Validate เงื่อนไขเดียวกับ assign-pallet:
-    ///   1) Pallet ว่าง หรือ สินค้าใน Pallet เป็นบริษัท (Owner) เดียวกัน
-    ///   2) ไม่มีสินค้านี้ หรือ มีสินค้าและ Batch เดียวกัน
-    /// </summary>
-    [HttpPost("labeling/complete/{palletId}")]
-    public async Task<IActionResult> LabelingComplete(string palletId)
-    {
-        // ── 1. ตรวจ Pallet ─────────────────────────
-        var pallet = await db.Pallets.FindAsync(palletId);
-        if (pallet is null)
-            return NotFound(new ApiError($"Pallet '{palletId}' not found."));
-
-        // Pallet ต้องว่าง (AVAILABLE) หรือเป็น FG ที่มีของอยู่แล้ว
-        if (pallet.Status != "AVAILABLE" && pallet.Status != "FG")
-            return BadRequest(new ApiError(
-                $"Pallet '{palletId}' มีสถานะ '{pallet.Status}' ไม่สามารถแมพสินค้าได้",
-                "ใช้ได้เฉพาะ Pallet ที่มีสถานะ AVAILABLE หรือ FG เท่านั้น"));
-
-        // ── 2. หาสินค้าที่ตัดยอดแล้ว (PREWORK_RECEIVED, PalletId=null) ──
-        var lines = await db.ReceiptLines
-            .Include(l => l.Part)
-            .Where(l => l.Status == "PREWORK_RECEIVED" && l.PalletId == null)
-            .ToListAsync();
-
-        if (lines.Count == 0)
-            return BadRequest(new ApiError(
-                "ไม่มีสินค้าที่ตัดยอดรอแมพ (PREWORK_RECEIVED)"));
-
-        // ── 3. ดึงสินค้าที่อยู่ใน Pallet อยู่แล้ว ──
-        var existingLinesInPallet = await db.ReceiptLines
-            .Include(l => l.Part)
-            .Where(l => l.PalletId == palletId && l.Status == "PALLETIZED")
-            .ToListAsync();
-
-        if (existingLinesInPallet.Count > 0)
-        {
-            // ── 4a. ตรวจ Owner: สินค้าใน Pallet ต้องเป็นบริษัทเดียวกัน ──
-            var existingOwners = existingLinesInPallet
-                .Where(l => l.Part != null)
-                .Select(l => l.Part!.Owner)
-                .Distinct()
-                .ToList();
-
-            var newOwners = lines
-                .Where(l => l.Part != null)
-                .Select(l => l.Part!.Owner)
-                .Distinct()
-                .ToList();
-
-            foreach (var newOwner in newOwners)
-            {
-                if (existingOwners.Count > 0 && !existingOwners.Contains(newOwner))
-                    return BadRequest(new ApiError(
-                        $"Pallet '{palletId}' มีสินค้าของ '{existingOwners[0]}' อยู่แล้ว ไม่สามารถเพิ่มสินค้าของ '{newOwner}' ได้",
-                        "สินค้าใน Pallet ต้องเป็นของบริษัท (Owner) เดียวกันเท่านั้น"));
-            }
-
-            // ── 4b. ตรวจ Part ซ้ำ: ถ้ามี Part เดียวกันใน Pallet แล้ว ต้องเป็น Batch เดียวกัน ──
-            foreach (var line in lines)
-            {
-                var duplicateInPallet = existingLinesInPallet
-                    .Where(l => l.PartId == line.PartId)
-                    .ToList();
-
-                if (duplicateInPallet.Count > 0)
-                {
-                    var existingBatch = duplicateInPallet.First().LotNumber;
-                    if (line.LotNumber != existingBatch)
-                        return BadRequest(new ApiError(
-                            $"Pallet '{palletId}' มีสินค้า '{line.PartId}' Batch '{existingBatch}' อยู่แล้ว ไม่สามารถเพิ่ม Batch '{line.LotNumber}' ได้",
-                            "สินค้าชนิดเดียวกันใน Pallet ต้องเป็น Batch เดียวกันเท่านั้น"));
-                }
-            }
-        }
-
-        // ── 5. แมพสินค้าลง Pallet + เปลี่ยน Condition เป็น FG ──
-        foreach (var line in lines)
-        {
-            line.PalletId = palletId;
-            line.Condition = "FG";
-            line.Status = "PALLETIZED";
-            line.UpdatedAt = DateTime.UtcNow;
-        }
-
-        pallet.Type = "FG";
-        pallet.Status = "FG";     // พร้อม putaway
-        pallet.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        // ── SignalR: broadcast labeling completed ──
-        await hub.Clients.All.SendAsync("LabelingCompleted", new
-        {
-            palletId,
-            palletType = pallet.Type,
-            palletStatus = pallet.Status,
-        });
-
-        return Ok(new ApiSuccess(true,
-            $"🏷️ Pallet '{palletId}' ติดฉลากเสร็จ — แมพ {lines.Count} รายการ (PW → FG) พร้อม Putaway เข้า ASRS"));
-    }
-
-    // ─────────────────────────────────────────────
     //  Basket Return — จำลองการคืน Basket
     // ─────────────────────────────────────────────
 
@@ -415,14 +307,64 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
 
         // 2. หา ReceiptLines ที่ตัดยอดแล้ว (PREWORK_RECEIVED, PalletId=null)
         var lines = await db.ReceiptLines
+            .Include(l => l.Part)
             .Where(l => l.Status == "PREWORK_RECEIVED" && l.PalletId == null)
             .ToListAsync();
 
         if (lines.Count == 0)
             return BadRequest(new ApiError("ไม่มีสินค้าที่ตัดยอดรอแมพ (PREWORK_RECEIVED)"));
 
-        // 3. แมพสินค้าลง Pallet + เปลี่ยน PW → FG
-        foreach (var line in lines)
+        // 3. เลือกเฉพาะ lines ที่ compatible (Owner + Batch) กับ Pallet
+        var existingLines = await db.ReceiptLines
+            .Include(l => l.Part)
+            .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
+            .ToListAsync();
+
+        // หา Owner ที่ lock ไว้แล้ว (ถ้า Pallet มีของอยู่)
+        var lockedOwner = existingLines
+            .Where(l => l.Part != null)
+            .Select(l => l.Part!.Owner)
+            .FirstOrDefault();
+
+        // หา Part→Batch ที่ lock ไว้แล้ว
+        var lockedBatches = existingLines
+            .Where(l => l.PartId != null)
+            .GroupBy(l => l.PartId!)
+            .ToDictionary(g => g.Key, g => g.First().LotNumber);
+
+        // ถ้ายังไม่มี lock → ใช้ Owner ของ line แรก
+        if (lockedOwner == null)
+            lockedOwner = lines.FirstOrDefault(l => l.Part != null)?.Part!.Owner;
+
+        // กรอง lines ที่ Owner ตรง
+        var compatible = lines
+            .Where(l => l.Part == null || l.Part.Owner == lockedOwner)
+            .ToList();
+
+        // กรอง Batch — Part เดียวกันต้อง Batch เดียวกัน
+        var selected = new List<WmsApi.Models.ReceiptLine>();
+        var batchMap = new Dictionary<string, string?>(lockedBatches!);
+
+        foreach (var line in compatible)
+        {
+            if (line.PartId != null && batchMap.TryGetValue(line.PartId, out var existingBatch))
+            {
+                if (line.LotNumber != existingBatch)
+                    continue; // Batch ไม่ตรง → ข้าม
+            }
+
+            selected.Add(line);
+            if (line.PartId != null && !batchMap.ContainsKey(line.PartId))
+                batchMap[line.PartId] = line.LotNumber;
+        }
+
+        if (selected.Count == 0)
+            return BadRequest(new ApiError("ไม่มีสินค้าที่ compatible กับ Pallet นี้ได้"));
+
+        var skipped = lines.Count - selected.Count;
+
+        // 4. แมพสินค้าลง Pallet + เปลี่ยน PW → FG
+        foreach (var line in selected)
         {
             line.PalletId = req.PalletId;
             line.Condition = "FG";
@@ -438,8 +380,19 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
 
         await db.SaveChangesAsync();
 
-        return Ok(new ApiSuccess(true,
-            $"🏷️ ติดสติ๊กเกอร์เสร็จ — แมพ {lines.Count} รายการลง Pallet '{req.PalletId}' (PW→FG) พร้อมส่ง ASRS จาก PW-STN-2/4/6"));
+        // ── SignalR: broadcast labeling completed ──
+        await hub.Clients.All.SendAsync("LabelingCompleted", new
+        {
+            palletId = req.PalletId,
+            palletType = pallet.Type,
+            palletStatus = pallet.Status,
+        });
+
+        var msg = $"🏷️ ติดสติ๊กเกอร์เสร็จ — แมพ {selected.Count} รายการลง Pallet '{req.PalletId}' (PW→FG) พร้อมส่ง ASRS จาก PW-STN-2/4/6";
+        if (skipped > 0)
+            msg += $"\n⚠️ ข้าม {skipped} รายการ (คนละ Owner/Batch) — รอแมพ Pallet อื่น";
+
+        return Ok(new ApiSuccess(true, msg));
     }
 
 }
