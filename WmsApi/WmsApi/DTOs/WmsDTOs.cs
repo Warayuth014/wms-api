@@ -210,33 +210,6 @@ public record ConfirmUnloadResponse(
     bool AllConfirmed    // true → ไป Step 2 ได้เลย
 );
 
-// ── Scan Basket ───────────────────────────────
-public record ScanBasketResponse(
-    string BasketId,
-    string Label,
-    string? Zone,
-    string? Destination,
-    string Status,
-    string Message
-);
-
-// ── Load to Basket (Step 2) ───────────────────
-public record LoadToBasketRequest(
-    int SessionId,
-    string BasketId,
-    string PartId,
-    string PalletId,
-    string OperatorId
-);
-
-public record LoadToBasketResponse(
-    bool Success,
-    string Message,
-    int LoadedCount,
-    int TotalCount,
-    bool AllLoaded       // true → Session COMPLETED
-);
-
 // =============================================
 // 4.X Putaway
 // =============================================
@@ -310,23 +283,6 @@ public record PreworkReturnPalletRequest(
     string OperatorId
 );
 
-// ── Confirmed Unload Items (grouped by PartId) ─
-public record GroupedConfirmedItemResponse(
-    string PartId,
-    string Owner,
-    string Brand,
-    string ItemDesc,
-    string? ImageUrl,
-    string? LotNumber,
-    int TotalQty
-);
-
-// ── Return Basket ──────────────────────────
-public record ReturnBasketRequest(
-    string BasketId,
-    string OperatorId
-);
-
 // ── Return Pallet to ASRS ──────────────────
 public record ReturnPalletToAsisRequest(
     string PalletId,
@@ -337,23 +293,6 @@ public record ReturnPalletToAsisRequest(
 // ── ASRS Dispatch (RETURNING → IN_TRANSIT) ─
 public record AsisDispatchRequest(
     string PalletId
-);
-
-// ── Load Basket (by PartId + Qty) ──────────
-public record LoadBasketRequest(
-    string PartId,
-    string BasketId,
-    int Qty,
-    string OperatorId
-);
-
-public record LoadBasketResponse2(
-    bool Success,
-    string BasketId,
-    string PartId,
-    int QtyLoaded,
-    int QtyRemaining,
-    string Message
 );
 
 // =============================================
@@ -510,64 +449,8 @@ public record TestOrderItem(
     string PartId,
     int Qty            // จำนวนที่ต้องการ pick
 );
-// =============================================
-// Replenishment
-// =============================================
-
-// ── Check Trigger ─────────────────────────────
-public record ReplenishTriggerItem(
-    string PartId, string Owner, string Brand, string ItemDesc, string? ImageUrl,
-    int QtyOnHand, int MinStock, int MaxStock, int QtyRequired
-);
-public record CheckTriggerResponse(int PartsNeedingReplenishment, List<ReplenishTriggerItem> Items);
-
-// ── Replenish Order ───────────────────────────
-public record CreateReplenishOrderRequest(string TriggeredBy, List<CreateReplenishLineRequest> Lines);
-public record CreateReplenishLineRequest(string PartId, int QtyRequired);
-public record ReplenishOrderResponse(
-    int OrderId, string Status, string TriggeredBy, DateTime CreatedAt,
-    List<ReplenishOrderLineDto> Lines
-);
-public record ReplenishOrderLineDto(
-    int LineId, string PartId, string Owner, string Brand, string ItemDesc,
-    string? ImageUrl, int QtyRequired, int QtyFilled, string Status
-);
-
-// ── Tote Scan ─────────────────────────────────
-public record ToteScanResponse(
-    string ToteId, string Label, string Status, string Location,
-    List<ToteInventoryItemDto> CurrentInventory
-);
-public record ToteInventoryItemDto(string PartId, string ItemDesc, int QtyOnHand);
-
-// ── Open Session ──────────────────────────────
-public record OpenReplenishSessionRequest(int OrderId, string ToteId, string PalletId, string OperatorId);
-public record ReplenishSessionResponse(
-    int SessionId, int OrderId, string ToteId, string PalletId, string Status,
-    List<ReplenishSessionLineDto> Lines
-);
-public record ReplenishSessionLineDto(
-    int LineId, string PartId, string Owner, string Brand, string ItemDesc,
-    string? ImageUrl, int OrderLineId, int QtyRequired, int QtyFilled,
-    string SessionLineStatus, string OrderLineStatus
-);
-
-// ── Confirm Line ──────────────────────────────
-public record ConfirmReplenishLineRequest(int SessionId, int SessionLineId, int QtyFilled);
-public record ConfirmReplenishLineResponse(
-    int SessionLineId, string PartId, int QtyFilled,
-    string SessionLineStatus, string OrderLineStatus,
-    int OrderLineQtyFilled, int OrderLineQtyRequired
-);
-
-// ── Complete Session ──────────────────────────
-public record CompleteReplenishSessionRequest(int SessionId);
-public record CompleteReplenishSessionResponse(
-    bool Success, string OrderStatus, int TotalLinesCompleted,
-    List<ToteInventoryItemDto> UpdatedInventory, string Message
-);
-
 // ── Haipick (internal API) ────────────────────
+public record ToteInventoryItemDto(string PartId, string ItemDesc, int QtyOnHand);
 public record HaipickInventoryItem(
     string PartId, string Owner, string Brand, string ItemDesc,
     int TotalQtyOnHand, List<ToteBreakdownItem> ToteBreakdown

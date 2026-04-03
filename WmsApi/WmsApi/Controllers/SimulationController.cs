@@ -224,32 +224,6 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
     }
 
     // ─────────────────────────────────────────────
-    //  Basket Return — จำลองการคืน Basket
-    // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// Robot/AGV รับ Basket ที่ว่างแล้วกลับไป
-    /// RETURNING → AVAILABLE
-    /// </summary>
-    [HttpPost("basket/return-complete/{basketId}")]
-    public async Task<IActionResult> BasketReturnComplete(string basketId)
-    {
-        var basket = await db.Baskets.FindAsync(basketId);
-        if (basket is null)
-            return NotFound(new ApiError($"Basket '{basketId}' not found."));
-
-        basket.Status = "AVAILABLE";
-        basket.Destination = null;
-        basket.Zone = null;
-        basket.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        return Ok(new ApiSuccess(true,
-            $"🧺 Basket '{basketId}' ถูกส่งกลับเรียบร้อย (AVAILABLE)"));
-    }
-
-    // ─────────────────────────────────────────────
     //  Pallet Return — จำลอง pallet กลับจาก Pick/Unload
     // ─────────────────────────────────────────────
 
