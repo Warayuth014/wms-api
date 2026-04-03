@@ -10,7 +10,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<User> Users { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Part> Parts { get; set; }
-    public DbSet<Customer> Customers { get; set; }
     public DbSet<Tote> Totes { get; set; }
     public DbSet<ToteInventory> ToteInventory { get; set; }
 
@@ -19,11 +18,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<POItem> POItems { get; set; }
     public DbSet<ReceivingSession> ReceivingSessions { get; set; }
     public DbSet<ReceiptLine> ReceiptLines { get; set; }
-    public DbSet<SalesOrder> SalesOrders { get; set; }
-    public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
-    public DbSet<ReturnOrder> ReturnOrders { get; set; }
-    public DbSet<ReturnLine> ReturnLines { get; set; }
-
     // ── flow2 ─────────────────────────────────
     public DbSet<Pallet> Pallets { get; set; }
     public DbSet<Basket> Baskets { get; set; }
@@ -57,68 +51,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     protected override void OnModelCreating(ModelBuilder mb)
     
     {
-        // ── Customer ──────────────────────────────
-        mb.Entity<SalesOrder>()
-            .HasOne(x => x.Customer)
-            .WithMany(x => x.SalesOrders)
-            .HasForeignKey(x => x.CustomerId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<SalesOrder>()
-            .HasOne(x => x.Creator)
-            .WithMany()
-            .HasForeignKey(x => x.CreatedBy)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── SalesOrderItem ────────────────────────
-        mb.Entity<SalesOrderItem>()
-            .HasIndex(x => new { x.OrderId, x.PartId })
-            .IsUnique();
-
-        mb.Entity<SalesOrderItem>()
-            .HasOne(x => x.SalesOrder)
-            .WithMany(x => x.Items)
-            .HasForeignKey(x => x.OrderId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<SalesOrderItem>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── ReturnOrder ───────────────────────────
-        mb.Entity<ReturnOrder>()
-            .HasOne(x => x.SalesOrder)
-            .WithMany(x => x.ReturnOrders)
-            .HasForeignKey(x => x.OrderId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<ReturnOrder>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── ReturnLine ────────────────────────────
-        mb.Entity<ReturnLine>()
-            .HasOne(x => x.ReturnOrder)
-            .WithMany(x => x.Lines)
-            .HasForeignKey(x => x.ReturnId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<ReturnLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<ReturnLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
         // ── PurchaseOrder ─────────────────────
         mb.Entity<PurchaseOrder>()
             .HasOne(x => x.Supplier)
