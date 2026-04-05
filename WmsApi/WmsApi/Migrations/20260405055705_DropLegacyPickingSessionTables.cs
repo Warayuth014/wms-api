@@ -11,13 +11,15 @@ namespace WmsApi.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PickingLines",
-                schema: "picking");
+            migrationBuilder.Sql("""
+                IF OBJECT_ID(N'[picking].[PickingLines]', N'U') IS NOT NULL
+                    DROP TABLE [picking].[PickingLines];
+                """);
 
-            migrationBuilder.DropTable(
-                name: "PickingSessions",
-                schema: "picking");
+            migrationBuilder.Sql("""
+                IF OBJECT_ID(N'[picking].[PickingSessions]', N'U') IS NOT NULL
+                    DROP TABLE [picking].[PickingSessions];
+                """);
         }
 
         /// <inheritdoc />

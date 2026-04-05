@@ -48,10 +48,10 @@ public class Part
 }
 
 // =============================================
-// Schema: flow1
+// Schema: receiving
 // =============================================
 
-[Table("PurchaseOrders", Schema = "flow1")]
+[Table("PurchaseOrders", Schema = "receiving")]
 public class PurchaseOrder
 {
     [Key]
@@ -72,7 +72,7 @@ public class PurchaseOrder
     public ICollection<POItem> Items { get; set; } = [];
 }
 
-[Table("POItems", Schema = "flow1")]
+[Table("POItems", Schema = "receiving")]
 public class POItem
 {
     [Key]
@@ -95,7 +95,7 @@ public class POItem
     public Part? Part { get; set; }
 }
 
-[Table("ReceivingSessions", Schema = "flow1")]
+[Table("ReceivingSessions", Schema = "receiving")]
 public class ReceivingSession
 {
     [Key]
@@ -116,7 +116,7 @@ public class ReceivingSession
     public ICollection<ReceiptLine> Lines { get; set; } = [];
 }
 
-[Table("ReceiptLines", Schema = "flow1")]
+[Table("ReceiptLines", Schema = "receiving")]
 public class ReceiptLine
 {
     [Key]
@@ -151,10 +151,10 @@ public class ReceiptLine
 }
 
 // =============================================
-// Schema: flow2
+// Schema: unload
 // =============================================
 
-[Table("Pallets", Schema = "flow2")]
+[Table("Pallets", Schema = "unload")]
 public class Pallet
 {
     [Key]
@@ -170,7 +170,7 @@ public class Pallet
     public ICollection<UnloadLine> UnloadLines { get; set; } = [];
 }
 
-[Table("UnloadSessions", Schema = "flow2")]
+[Table("UnloadSessions", Schema = "unload")]
 public class UnloadSession
 {
     [Key]
@@ -192,7 +192,7 @@ public class UnloadSession
     public ICollection<UnloadLine> UnloadLines { get; set; } = [];
 }
 
-[Table("UnloadLines", Schema = "flow2")]
+[Table("UnloadLines", Schema = "unload")]
 public class UnloadLine
 {
     [Key]

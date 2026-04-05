@@ -10,12 +10,12 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<User> Users { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Part> Parts { get; set; }
-    // ── flow1 ─────────────────────────────────
+    // ── receiving ─────────────────────────────
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<POItem> POItems { get; set; }
     public DbSet<ReceivingSession> ReceivingSessions { get; set; }
     public DbSet<ReceiptLine> ReceiptLines { get; set; }
-    // ── flow2 ─────────────────────────────────
+    // ── unload ───────────────────────────────
     public DbSet<Pallet> Pallets { get; set; }
     public DbSet<UnloadSession> UnloadSessions { get; set; }
     public DbSet<UnloadLine> UnloadLines { get; set; }
