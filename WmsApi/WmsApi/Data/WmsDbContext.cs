@@ -10,9 +10,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<User> Users { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Part> Parts { get; set; }
-    public DbSet<Tote> Totes { get; set; }
-    public DbSet<ToteInventory> ToteInventory { get; set; }
-
     // ── flow1 ─────────────────────────────────
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<POItem> POItems { get; set; }
@@ -283,23 +280,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .HasForeignKey(x => x.CurrentPalletId)
             .OnDelete(DeleteBehavior.SetNull)
             .IsRequired(false);
-
-        // ── ToteInventory ─────────────────────
-        mb.Entity<ToteInventory>()
-            .HasIndex(x => new { x.ToteId, x.PartId })
-            .IsUnique();
-
-        mb.Entity<ToteInventory>()
-            .HasOne(x => x.Tote)
-            .WithMany(x => x.Inventory)
-            .HasForeignKey(x => x.ToteId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<ToteInventory>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
 
         // ── CancelLog ─────────────────────────
         mb.Entity<CancelLog>()

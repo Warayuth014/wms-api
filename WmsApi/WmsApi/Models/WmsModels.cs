@@ -223,45 +223,6 @@ public class UnloadLine
 }
 
 // =============================================
-// Schema: master (Tote + Inventory)
-// =============================================
-
-[Table("Totes", Schema = "master")]
-public class Tote
-{
-    [Key]
-    [Column(TypeName = "nvarchar(50)")]
-    public string ToteId { get; set; } = string.Empty;
-    public string Label { get; set; } = string.Empty;
-    public string Status { get; set; } = "AVAILABLE";    // AVAILABLE | IN_USE | REPLENISHING
-    public string Location { get; set; } = "STORAGE";    // STORAGE | REPLENISH_STATION
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-
-    // Navigation
-    public ICollection<ToteInventory> Inventory { get; set; } = [];
-}
-
-[Table("ToteInventory", Schema = "master")]
-public class ToteInventory
-{
-    [Key]
-    public int InventoryId { get; set; }
-    [Column(TypeName = "nvarchar(50)")]
-    public string ToteId { get; set; } = string.Empty;
-    [Column(TypeName = "nvarchar(50)")]
-    public string PartId { get; set; } = string.Empty;
-    public int QtyOnHand { get; set; } = 0;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-
-    // Navigation
-    [ForeignKey(nameof(ToteId))]
-    public Tote? Tote { get; set; }
-
-    [ForeignKey(nameof(PartId))]
-    public Part? Part { get; set; }
-}
-
-// =============================================
 // Schema: putaway
 // =============================================
 

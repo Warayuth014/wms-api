@@ -449,13 +449,3 @@ public record TestOrderItem(
     string PartId,
     int Qty            // จำนวนที่ต้องการ pick
 );
-// ── Haipick (internal API) ────────────────────
-public record ToteInventoryItemDto(string PartId, string ItemDesc, int QtyOnHand);
-public record HaipickInventoryItem(
-    string PartId, string Owner, string Brand, string ItemDesc,
-    int TotalQtyOnHand, List<ToteBreakdownItem> ToteBreakdown
-);
-public record ToteBreakdownItem(string ToteId, string Label, int QtyOnHand);
-public record HaipickInventoryResponse(List<HaipickInventoryItem> Items);
-public record ReceiveToteRequest(string ToteId, List<ReceiveToteItem> Items);
-public record ReceiveToteItem(string PartId, int QtyOnHand);
