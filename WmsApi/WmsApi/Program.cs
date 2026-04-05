@@ -2,6 +2,7 @@
 using WmsApi.Data;
 using WmsApi.Hubs;
 using WmsApi.Services.Picking;
+using WmsApi.Services.Putaway;
 using WmsApi.Services.Receiving;
 using WmsApi.Services.Unload;
 
@@ -22,6 +23,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddScoped<IPickingService, PickingService>();
+builder.Services.AddScoped<IPutawayService, PutawayService>();
 builder.Services.AddScoped<IReceivingService, ReceivingService>();
 builder.Services.AddScoped<IUnloadService, UnloadService>();
 
