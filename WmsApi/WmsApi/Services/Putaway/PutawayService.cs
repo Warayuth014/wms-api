@@ -270,7 +270,7 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
         var palletIds = activeSessions.Select(s => s.PalletId).Distinct().ToList();
         var palletItems = await db.ReceiptLines
             .Include(l => l.Part)
-            .Where(l => palletIds.Contains(l.PalletId) && l.Status == "PALLETIZED")
+            .Where(l => l.PalletId != null && palletIds.Contains(l.PalletId) && l.Status == "PALLETIZED")
             .GroupBy(l => l.PalletId)
             .Select(g => new
             {
@@ -284,7 +284,7 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
             })
             .ToListAsync();
 
-        var palletItemsDict = palletItems.ToDictionary(p => p.PalletId, p => p.Items);
+        var palletItemsDict = palletItems.ToDictionary(p => p.PalletId!, p => p.Items);
 
         var result = activeSessions.Select(s => new
         {
@@ -375,7 +375,7 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
 
         var palletItems = await db.ReceiptLines
             .Include(l => l.Part)
-            .Where(l => palletIds.Contains(l.PalletId) && l.Status == "PALLETIZED")
+            .Where(l => l.PalletId != null && palletIds.Contains(l.PalletId) && l.Status == "PALLETIZED")
             .GroupBy(l => l.PalletId)
             .Select(g => new
             {
