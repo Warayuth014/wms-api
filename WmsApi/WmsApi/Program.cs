@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.Hubs;
+using WmsApi.Services.Receiving;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,7 @@ builder.Services.AddSwaggerGen(c =>
 // ── SQL Server ────────────────────────────────
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<IReceivingService, ReceivingService>();
 
 // ── SignalR ───────────────────────────────────
 builder.Services.AddSignalR();
