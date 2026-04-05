@@ -2,6 +2,7 @@
 using WmsApi.Data;
 using WmsApi.Hubs;
 using WmsApi.Services.Receiving;
+using WmsApi.Services.Unload;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddScoped<IReceivingService, ReceivingService>();
+builder.Services.AddScoped<IUnloadService, UnloadService>();
 
 // ── SignalR ───────────────────────────────────
 builder.Services.AddSignalR();
