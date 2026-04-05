@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.Hubs;
+using WmsApi.Services.Picking;
 using WmsApi.Services.Receiving;
 using WmsApi.Services.Unload;
 
@@ -20,6 +21,7 @@ builder.Services.AddSwaggerGen(c =>
 // ── SQL Server ────────────────────────────────
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddScoped<IReceivingService, ReceivingService>();
 builder.Services.AddScoped<IUnloadService, UnloadService>();
 
