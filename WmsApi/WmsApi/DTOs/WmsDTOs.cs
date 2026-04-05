@@ -1,4 +1,4 @@
-﻿namespace WmsApi.DTOs;
+namespace WmsApi.DTOs;
 
 // =============================================
 // 4.1 Common
@@ -299,42 +299,10 @@ public record AsisDispatchRequest(
 // 4.6 Picking
 // =============================================
 
-// ── Active Session Response ─────────────────
-public record OpenPickingResponse(
-    int SessionId,
-    string PackPalletId,
-    string Status,
-    List<PickingLineResponse> PickedLines
-);
-
 // ── Request Pallet from ASRS (simulation) ───
 public record RequestFromAsrsRequest(
     string PalletId,
     string OperatorId
-);
-
-// ── Complete Picking Session ─────────────────
-public record CompletePickingResponse(
-    bool Success,
-    int TotalItemsPicked,
-    string PackPalletId,
-    string Message
-);
-
-// ── Picking Line Response ────────────────────
-public record PickingLineResponse(
-    int LineId,
-    string SourceId,       // Pallet ID or Basket ID
-    string SourceType,     // PALLET | BASKET
-    string PartId,
-    string Owner,
-    string Brand,
-    string ItemDesc,
-    string? ImageUrl,
-    string? LotNumber,
-    string? ExpiredDate,
-    int QtyPicked,
-    string Status
 );
 
 // =============================================

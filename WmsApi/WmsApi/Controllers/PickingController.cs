@@ -11,47 +11,6 @@ namespace WmsApi.Controllers;
 public class PickingController(WmsDbContext db) : ControllerBase
 {
     // =============================================
-    // GET /api/picking/active-session/{packPalletId}
-    // ดึง session ที่เปิดค้างอยู่
-    // =============================================
-    [HttpGet("active-session/{packPalletId}")]
-    public async Task<IActionResult> GetActiveSession(string packPalletId)
-    {
-        var session = await db.PickingSessions
-            .Include(s => s.Lines)
-                .ThenInclude(l => l.Part)
-            .FirstOrDefaultAsync(s => s.PackPalletId == packPalletId
-                                   && s.Status == "OPEN");
-
-        if (session is null)
-            return NotFound(new ApiError("ไม่มี session ที่เปิดค้างอยู่"));
-
-        var lines = session.Lines
-            .Where(l => l.Status == "PICKED")
-            .Select(l => new PickingLineResponse(
-                LineId: l.LineId,
-                SourceId: l.SourceType == "BASKET" ? l.BasketId! : l.PickPalletId!,
-                SourceType: l.SourceType,
-                PartId: l.PartId,
-                Owner: l.Part!.Owner,
-                Brand: l.Part!.Brand,
-                ItemDesc: l.Part!.ItemDesc,
-                ImageUrl: l.Part!.ImageUrl,
-                LotNumber: l.LotNumber,
-                ExpiredDate: l.ExpiredDate?.ToString("yyyy-MM-dd"),
-                QtyPicked: l.QtyPicked,
-                Status: l.Status
-            )).ToList();
-
-        return Ok(new OpenPickingResponse(
-            SessionId: session.SessionId,
-            PackPalletId: session.PackPalletId,
-            Status: session.Status,
-            PickedLines: lines
-        ));
-    }
-
-    // =============================================
     // ── Pick Order Flow ──────────────────────
     // =============================================
 
@@ -450,51 +409,6 @@ public class PickingController(WmsDbContext db) : ControllerBase
                 ? $"📦 Pallet '{req.PalletId}' ส่งไป {dest} (IN_TRANSIT — ยังมีของเหลือ)"
                 : $"📦 Pallet '{req.PalletId}' ส่งไป {dest} (AVAILABLE — ว่างเลย)"));
     }
-
-    // =============================================
-    // POST /api/picking/complete-session/{sessionId}
-    // ปิด Session เมื่อ Pack Pallet ครบ
-    // =============================================
-    [HttpPost("complete-session/{sessionId}")]
-    public async Task<IActionResult> CompleteSession(int sessionId)
-    {
-        var session = await db.PickingSessions
-            .Include(s => s.Lines)
-            .FirstOrDefaultAsync(s => s.SessionId == sessionId);
-
-        if (session is null)
-            return NotFound(new ApiError("Session not found."));
-
-        if (session.Status != "OPEN")
-            return BadRequest(new ApiError("Session ปิดไปแล้ว"));
-
-        var pickedLines = session.Lines.Where(l => l.Status == "PICKED").ToList();
-        if (pickedLines.Count == 0)
-            return BadRequest(new ApiError("ไม่มีรายการที่ pick — ไม่สามารถปิด Session ได้"));
-
-        session.Status = "COMPLETED";
-        session.CompletedAt = DateTime.UtcNow;
-
-        // อัพเดท pack pallet status
-        var packPallet = await db.Pallets.FindAsync(session.PackPalletId);
-        if (packPallet is not null)
-        {
-            packPallet.Status = "PACKED";
-            packPallet.UpdatedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync();
-
-        var totalPicked = pickedLines.Sum(l => l.QtyPicked);
-
-        return Ok(new CompletePickingResponse(
-            Success: true,
-            TotalItemsPicked: totalPicked,
-            PackPalletId: session.PackPalletId,
-            Message: $"✅ Picking เสร็จสิ้น รวม {totalPicked} ชิ้น บน Pack Pallet '{session.PackPalletId}'"
-        ));
-    }
-
     // =============================================
     // TEST: GET /api/picking/available-lines
     // ดึง ReceiptLines ที่ PALLETIZED (พร้อม pick)

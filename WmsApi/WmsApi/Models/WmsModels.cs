@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.Metrics;
@@ -426,71 +426,4 @@ public class PickStation
 
     [ForeignKey(nameof(CurrentPalletId))]
     public Pallet? CurrentPallet { get; set; }
-}
-
-// =============================================
-// Schema: picking  (v1 — Pack Pallet session, kept for backward compat)
-// =============================================
-
-[Table("PickingSessions", Schema = "picking")]
-public class PickingSession
-{
-    [Key]
-    public int SessionId { get; set; }
-    [Column(TypeName = "nvarchar(50)")]
-    public string PackPalletId { get; set; } = string.Empty;
-    public string Status { get; set; } = "OPEN";
-    // OPEN | COMPLETED
-    [Column(TypeName = "nvarchar(50)")]
-    public string OperatorId { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? CompletedAt { get; set; }
-
-    // Navigation
-    [ForeignKey(nameof(PackPalletId))]
-    public Pallet? PackPallet { get; set; }
-
-    [ForeignKey(nameof(OperatorId))]
-    public User? Operator { get; set; }
-
-    public ICollection<PickingLine> Lines { get; set; } = [];
-}
-
-[Table("PickingLines", Schema = "picking")]
-public class PickingLine
-{
-    [Key]
-    public int LineId { get; set; }
-    public int SessionId { get; set; }
-    public string SourceType { get; set; } = "PALLET";
-    // PALLET | BASKET
-    [Column(TypeName = "nvarchar(50)")]
-    public string? PickPalletId { get; set; }   // ใช้เมื่อ SourceType = PALLET
-    [Column(TypeName = "nvarchar(50)")]
-    public string? BasketId { get; set; }        // ใช้เมื่อ SourceType = BASKET
-    [Column(TypeName = "nvarchar(50)")]
-    public string PartId { get; set; } = string.Empty;
-    public string? LotNumber { get; set; }
-    public DateOnly? ExpiredDate { get; set; }
-    public int QtyPicked { get; set; }
-    public string Status { get; set; } = "PICKED";
-    // PICKED | CANCELLED
-    [Column(TypeName = "nvarchar(50)")]
-    public string OperatorId { get; set; } = string.Empty;
-    public DateTime PickedAt { get; set; } = DateTime.UtcNow;
-
-    // Navigation
-    [ForeignKey(nameof(SessionId))]
-    public PickingSession? Session { get; set; }
-
-    [ForeignKey(nameof(PickPalletId))]
-    public Pallet? PickPallet { get; set; }
-
-    // BasketId: no FK navigation (cross-schema picking→flow2)
-
-    [ForeignKey(nameof(PartId))]
-    public Part? Part { get; set; }
-
-    [ForeignKey(nameof(OperatorId))]
-    public User? Operator { get; set; }
 }

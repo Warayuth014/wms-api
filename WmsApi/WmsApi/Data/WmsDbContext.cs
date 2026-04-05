@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using WmsApi.Models;
 
@@ -25,11 +25,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<WrappingSession> WrappingSessions { get; set; }
     public DbSet<ShipXQueue> ShipXQueues { get; set; }
     public DbSet<PreworkCutLog> PreworkCutLogs { get; set; }
-
-    // ── picking (v1) ─────────────────────────
-    public DbSet<PickingSession> PickingSessions { get; set; }
-    public DbSet<PickingLine> PickingLines { get; set; }
-
     // ── picking (v2 — Pick Order flow) ────────
     public DbSet<PickOrder> PickOrders { get; set; }
     public DbSet<PickOrderDetail> PickOrderDetails { get; set; }
@@ -201,45 +196,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .WithMany()
             .HasForeignKey(x => x.PartId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PickingSession ───────────────────
-        mb.Entity<PickingSession>()
-            .HasOne(x => x.PackPallet)
-            .WithMany()
-            .HasForeignKey(x => x.PackPalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PickingSession>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PickingLine ─────────────────────
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.Session)
-            .WithMany(x => x.Lines)
-            .HasForeignKey(x => x.SessionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.PickPallet)
-            .WithMany()
-            .HasForeignKey(x => x.PickPalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
         // ── PickOrder ────────────────────────
         mb.Entity<PickOrder>()
             .HasOne(x => x.Creator)
