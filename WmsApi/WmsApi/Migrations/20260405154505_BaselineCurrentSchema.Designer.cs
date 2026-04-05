@@ -12,8 +12,8 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    [Migration("20260405140114_RenameFlowSchemasToReceivingAndUnload")]
-    partial class RenameFlowSchemasToReceivingAndUnload
+    [Migration("20260405154505_BaselineCurrentSchema")]
+    partial class BaselineCurrentSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

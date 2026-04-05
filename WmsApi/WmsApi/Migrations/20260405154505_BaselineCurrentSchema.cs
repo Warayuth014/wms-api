@@ -6,44 +6,32 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace WmsApi.Migrations
 {
     /// <inheritdoc />
-    public partial class init : Migration
+    public partial class BaselineCurrentSchema : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.EnsureSchema(
-                name: "flow2");
+                name: "audit");
 
             migrationBuilder.EnsureSchema(
-                name: "audit");
+                name: "unload");
 
             migrationBuilder.EnsureSchema(
                 name: "master");
 
             migrationBuilder.EnsureSchema(
-                name: "flow1");
+                name: "picking");
 
-            migrationBuilder.CreateTable(
-                name: "Baskets",
-                schema: "flow2",
-                columns: table => new
-                {
-                    BasketId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Label = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Zone = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Destination = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Baskets", x => x.BasketId);
-                });
+            migrationBuilder.EnsureSchema(
+                name: "receiving");
+
+            migrationBuilder.EnsureSchema(
+                name: "putaway");
 
             migrationBuilder.CreateTable(
                 name: "Pallets",
-                schema: "flow2",
+                schema: "unload",
                 columns: table => new
                 {
                     PalletId = table.Column<string>(type: "nvarchar(450)", nullable: false),
@@ -67,6 +55,9 @@ namespace WmsApi.Migrations
                     Owner = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Brand = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ItemDesc = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ImageUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    MinStock = table.Column<int>(type: "int", nullable: true),
+                    MaxStock = table.Column<int>(type: "int", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
@@ -106,6 +97,67 @@ namespace WmsApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PickStations",
+                schema: "picking",
+                columns: table => new
+                {
+                    StationId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CurrentPalletId = table.Column<string>(type: "nvarchar(50)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PickStations", x => x.StationId);
+                    table.ForeignKey(
+                        name: "FK_PickStations_Pallets_CurrentPalletId",
+                        column: x => x.CurrentPalletId,
+                        principalSchema: "unload",
+                        principalTable: "Pallets",
+                        principalColumn: "PalletId",
+                        onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PreworkCutLogs",
+                schema: "putaway",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PalletId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    StationId = table.Column<string>(type: "nvarchar(20)", nullable: false),
+                    PartId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    Owner = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Brand = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ItemDesc = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ImageUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Qty = table.Column<int>(type: "int", nullable: false),
+                    LotNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ExpiredDate = table.Column<DateOnly>(type: "date", nullable: true),
+                    Condition = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    OperatorId = table.Column<string>(type: "nvarchar(20)", nullable: false),
+                    CutAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PreworkCutLogs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PreworkCutLogs_Pallets_PalletId",
+                        column: x => x.PalletId,
+                        principalSchema: "unload",
+                        principalTable: "Pallets",
+                        principalColumn: "PalletId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PreworkCutLogs_Parts_PartId",
+                        column: x => x.PartId,
+                        principalSchema: "master",
+                        principalTable: "Parts",
+                        principalColumn: "PartId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "CancelLog",
                 schema: "audit",
                 columns: table => new
@@ -140,8 +192,31 @@ namespace WmsApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PickOrders",
+                schema: "picking",
+                columns: table => new
+                {
+                    PickOrderId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CreatedBy = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PickOrders", x => x.PickOrderId);
+                    table.ForeignKey(
+                        name: "FK_PickOrders_Users_CreatedBy",
+                        column: x => x.CreatedBy,
+                        principalSchema: "master",
+                        principalTable: "Users",
+                        principalColumn: "UserId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PurchaseOrders",
-                schema: "flow1",
+                schema: "receiving",
                 columns: table => new
                 {
                     POId = table.Column<string>(type: "nvarchar(450)", nullable: false),
@@ -171,8 +246,43 @@ namespace WmsApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PutawaySessions",
+                schema: "putaway",
+                columns: table => new
+                {
+                    PutawayId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PalletId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    StationId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Destination = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    WrappingRequired = table.Column<bool>(type: "bit", nullable: false),
+                    OperatorId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PutawaySessions", x => x.PutawayId);
+                    table.ForeignKey(
+                        name: "FK_PutawaySessions_Pallets_PalletId",
+                        column: x => x.PalletId,
+                        principalSchema: "unload",
+                        principalTable: "Pallets",
+                        principalColumn: "PalletId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PutawaySessions_Users_OperatorId",
+                        column: x => x.OperatorId,
+                        principalSchema: "master",
+                        principalTable: "Users",
+                        principalColumn: "UserId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "UnloadSessions",
-                schema: "flow2",
+                schema: "unload",
                 columns: table => new
                 {
                     SessionId = table.Column<int>(type: "int", nullable: false)
@@ -190,7 +300,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_UnloadSessions_Pallets_PalletId",
                         column: x => x.PalletId,
-                        principalSchema: "flow2",
+                        principalSchema: "unload",
                         principalTable: "Pallets",
                         principalColumn: "PalletId",
                         onDelete: ReferentialAction.Restrict);
@@ -204,8 +314,40 @@ namespace WmsApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PickOrderDetails",
+                schema: "picking",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PickOrderId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    PartId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    RequiredQty = table.Column<int>(type: "int", nullable: false),
+                    ReservedQty = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PickOrderDetails", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PickOrderDetails_Parts_PartId",
+                        column: x => x.PartId,
+                        principalSchema: "master",
+                        principalTable: "Parts",
+                        principalColumn: "PartId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PickOrderDetails_PickOrders_PickOrderId",
+                        column: x => x.PickOrderId,
+                        principalSchema: "picking",
+                        principalTable: "PickOrders",
+                        principalColumn: "PickOrderId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "POItems",
-                schema: "flow1",
+                schema: "receiving",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
@@ -214,7 +356,11 @@ namespace WmsApi.Migrations
                     PartId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     QtyOrdered = table.Column<int>(type: "int", nullable: false),
                     QtyReceived = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                    QtyRemaining = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Condition = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    LotNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ExpiredDate = table.Column<DateOnly>(type: "date", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -229,7 +375,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_POItems_PurchaseOrders_POId",
                         column: x => x.POId,
-                        principalSchema: "flow1",
+                        principalSchema: "receiving",
                         principalTable: "PurchaseOrders",
                         principalColumn: "POId",
                         onDelete: ReferentialAction.Cascade);
@@ -237,7 +383,7 @@ namespace WmsApi.Migrations
 
             migrationBuilder.CreateTable(
                 name: "ReceivingSessions",
-                schema: "flow1",
+                schema: "receiving",
                 columns: table => new
                 {
                     SessionId = table.Column<int>(type: "int", nullable: false)
@@ -254,7 +400,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_ReceivingSessions_PurchaseOrders_POId",
                         column: x => x.POId,
-                        principalSchema: "flow1",
+                        principalSchema: "receiving",
                         principalTable: "PurchaseOrders",
                         principalColumn: "POId",
                         onDelete: ReferentialAction.Restrict);
@@ -268,66 +414,73 @@ namespace WmsApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "BasketLines",
-                schema: "flow2",
+                name: "ShipXQueue",
+                schema: "putaway",
                 columns: table => new
                 {
-                    LineId = table.Column<int>(type: "int", nullable: false)
+                    QueueId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    SessionId = table.Column<int>(type: "int", nullable: false),
-                    BasketId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    PartId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    PalletId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    LotNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    ExpiredDate = table.Column<DateOnly>(type: "date", nullable: true),
-                    QtyLoaded = table.Column<int>(type: "int", nullable: false),
+                    PutawayId = table.Column<int>(type: "int", nullable: false),
+                    PalletId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    Payload = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    LoadedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    OperatorId = table.Column<string>(type: "nvarchar(450)", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    SentAt = table.Column<DateTime>(type: "datetime2", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_BasketLines", x => x.LineId);
+                    table.PrimaryKey("PK_ShipXQueue", x => x.QueueId);
                     table.ForeignKey(
-                        name: "FK_BasketLines_Baskets_BasketId",
-                        column: x => x.BasketId,
-                        principalSchema: "flow2",
-                        principalTable: "Baskets",
-                        principalColumn: "BasketId",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_BasketLines_Pallets_PalletId",
+                        name: "FK_ShipXQueue_Pallets_PalletId",
                         column: x => x.PalletId,
-                        principalSchema: "flow2",
+                        principalSchema: "unload",
                         principalTable: "Pallets",
                         principalColumn: "PalletId",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_BasketLines_Parts_PartId",
-                        column: x => x.PartId,
-                        principalSchema: "master",
-                        principalTable: "Parts",
-                        principalColumn: "PartId",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_BasketLines_UnloadSessions_SessionId",
-                        column: x => x.SessionId,
-                        principalSchema: "flow2",
-                        principalTable: "UnloadSessions",
-                        principalColumn: "SessionId",
+                        name: "FK_ShipXQueue_PutawaySessions_PutawayId",
+                        column: x => x.PutawayId,
+                        principalSchema: "putaway",
+                        principalTable: "PutawaySessions",
+                        principalColumn: "PutawayId",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "WrappingSessions",
+                schema: "putaway",
+                columns: table => new
+                {
+                    WrappingId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PutawayId = table.Column<int>(type: "int", nullable: false),
+                    PalletId = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WrappingSessions", x => x.WrappingId);
                     table.ForeignKey(
-                        name: "FK_BasketLines_Users_OperatorId",
-                        column: x => x.OperatorId,
-                        principalSchema: "master",
-                        principalTable: "Users",
-                        principalColumn: "UserId",
+                        name: "FK_WrappingSessions_Pallets_PalletId",
+                        column: x => x.PalletId,
+                        principalSchema: "unload",
+                        principalTable: "Pallets",
+                        principalColumn: "PalletId",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_WrappingSessions_PutawaySessions_PutawayId",
+                        column: x => x.PutawayId,
+                        principalSchema: "putaway",
+                        principalTable: "PutawaySessions",
+                        principalColumn: "PutawayId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
                 name: "UnloadLines",
-                schema: "flow2",
+                schema: "unload",
                 columns: table => new
                 {
                     LineId = table.Column<int>(type: "int", nullable: false)
@@ -349,7 +502,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_UnloadLines_Pallets_PalletId",
                         column: x => x.PalletId,
-                        principalSchema: "flow2",
+                        principalSchema: "unload",
                         principalTable: "Pallets",
                         principalColumn: "PalletId",
                         onDelete: ReferentialAction.Restrict);
@@ -363,7 +516,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_UnloadLines_UnloadSessions_SessionId",
                         column: x => x.SessionId,
-                        principalSchema: "flow2",
+                        principalSchema: "unload",
                         principalTable: "UnloadSessions",
                         principalColumn: "SessionId",
                         onDelete: ReferentialAction.Cascade);
@@ -378,7 +531,7 @@ namespace WmsApi.Migrations
 
             migrationBuilder.CreateTable(
                 name: "ReceiptLines",
-                schema: "flow1",
+                schema: "receiving",
                 columns: table => new
                 {
                     LineId = table.Column<int>(type: "int", nullable: false)
@@ -388,9 +541,9 @@ namespace WmsApi.Migrations
                     PartId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     PalletId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     QtyReceived = table.Column<int>(type: "int", nullable: false),
+                    Condition = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     LotNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ExpiredDate = table.Column<DateOnly>(type: "date", nullable: true),
-                    Condition = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     OperatorId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     ReceivedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -402,7 +555,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_ReceiptLines_Pallets_PalletId",
                         column: x => x.PalletId,
-                        principalSchema: "flow2",
+                        principalSchema: "unload",
                         principalTable: "Pallets",
                         principalColumn: "PalletId",
                         onDelete: ReferentialAction.Restrict);
@@ -416,7 +569,7 @@ namespace WmsApi.Migrations
                     table.ForeignKey(
                         name: "FK_ReceiptLines_ReceivingSessions_SessionId",
                         column: x => x.SessionId,
-                        principalSchema: "flow1",
+                        principalSchema: "receiving",
                         principalTable: "ReceivingSessions",
                         principalColumn: "SessionId",
                         onDelete: ReferentialAction.Cascade);
@@ -429,35 +582,37 @@ namespace WmsApi.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BasketLines_BasketId",
-                schema: "flow2",
-                table: "BasketLines",
-                column: "BasketId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_BasketLines_OperatorId",
-                schema: "flow2",
-                table: "BasketLines",
-                column: "OperatorId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_BasketLines_PalletId",
-                schema: "flow2",
-                table: "BasketLines",
-                column: "PalletId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_BasketLines_PartId",
-                schema: "flow2",
-                table: "BasketLines",
-                column: "PartId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_BasketLines_SessionId",
-                schema: "flow2",
-                table: "BasketLines",
-                column: "SessionId");
+            migrationBuilder.CreateTable(
+                name: "PickOrderSubs",
+                schema: "picking",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PickOrderDetailId = table.Column<int>(type: "int", nullable: false),
+                    ReceiptLineId = table.Column<int>(type: "int", nullable: false),
+                    AllocatedQty = table.Column<int>(type: "int", nullable: false),
+                    PickedQty = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PickOrderSubs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PickOrderSubs_PickOrderDetails_PickOrderDetailId",
+                        column: x => x.PickOrderDetailId,
+                        principalSchema: "picking",
+                        principalTable: "PickOrderDetails",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_PickOrderSubs_ReceiptLines_ReceiptLineId",
+                        column: x => x.ReceiptLineId,
+                        principalSchema: "receiving",
+                        principalTable: "ReceiptLines",
+                        principalColumn: "LineId",
+                        onDelete: ReferentialAction.Restrict);
+                });
 
             migrationBuilder.CreateIndex(
                 name: "IX_CancelLog_ApprovedBy",
@@ -472,150 +627,257 @@ namespace WmsApi.Migrations
                 column: "RequestBy");
 
             migrationBuilder.CreateIndex(
+                name: "IX_PickOrderDetails_PartId",
+                schema: "picking",
+                table: "PickOrderDetails",
+                column: "PartId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PickOrderDetails_PickOrderId",
+                schema: "picking",
+                table: "PickOrderDetails",
+                column: "PickOrderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PickOrders_CreatedBy",
+                schema: "picking",
+                table: "PickOrders",
+                column: "CreatedBy");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PickOrderSubs_PickOrderDetailId",
+                schema: "picking",
+                table: "PickOrderSubs",
+                column: "PickOrderDetailId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PickOrderSubs_ReceiptLineId",
+                schema: "picking",
+                table: "PickOrderSubs",
+                column: "ReceiptLineId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PickStations_CurrentPalletId",
+                schema: "picking",
+                table: "PickStations",
+                column: "CurrentPalletId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_POItems_PartId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "POItems",
                 column: "PartId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_POItems_POId_PartId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "POItems",
                 columns: new[] { "POId", "PartId" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PreworkCutLogs_PalletId",
+                schema: "putaway",
+                table: "PreworkCutLogs",
+                column: "PalletId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PreworkCutLogs_PartId",
+                schema: "putaway",
+                table: "PreworkCutLogs",
+                column: "PartId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PurchaseOrders_CreatedBy",
-                schema: "flow1",
+                schema: "receiving",
                 table: "PurchaseOrders",
                 column: "CreatedBy");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PurchaseOrders_SupplierId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "PurchaseOrders",
                 column: "SupplierId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_PutawaySessions_OperatorId",
+                schema: "putaway",
+                table: "PutawaySessions",
+                column: "OperatorId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PutawaySessions_PalletId",
+                schema: "putaway",
+                table: "PutawaySessions",
+                column: "PalletId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ReceiptLines_OperatorId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "ReceiptLines",
                 column: "OperatorId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReceiptLines_PalletId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "ReceiptLines",
                 column: "PalletId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReceiptLines_PartId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "ReceiptLines",
                 column: "PartId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReceiptLines_SessionId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "ReceiptLines",
                 column: "SessionId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReceivingSessions_OperatorId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "ReceivingSessions",
                 column: "OperatorId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReceivingSessions_POId",
-                schema: "flow1",
+                schema: "receiving",
                 table: "ReceivingSessions",
                 column: "POId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ShipXQueue_PalletId",
+                schema: "putaway",
+                table: "ShipXQueue",
+                column: "PalletId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ShipXQueue_PutawayId",
+                schema: "putaway",
+                table: "ShipXQueue",
+                column: "PutawayId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_UnloadLines_OperatorId",
-                schema: "flow2",
+                schema: "unload",
                 table: "UnloadLines",
                 column: "OperatorId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UnloadLines_PalletId",
-                schema: "flow2",
+                schema: "unload",
                 table: "UnloadLines",
                 column: "PalletId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UnloadLines_PartId",
-                schema: "flow2",
+                schema: "unload",
                 table: "UnloadLines",
                 column: "PartId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_UnloadLines_SessionId_PartId",
-                schema: "flow2",
+                name: "IX_UnloadLines_SessionId",
+                schema: "unload",
                 table: "UnloadLines",
-                columns: new[] { "SessionId", "PartId" },
-                unique: true);
+                column: "SessionId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UnloadSessions_OperatorId",
-                schema: "flow2",
+                schema: "unload",
                 table: "UnloadSessions",
                 column: "OperatorId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UnloadSessions_PalletId",
-                schema: "flow2",
+                schema: "unload",
                 table: "UnloadSessions",
                 column: "PalletId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WrappingSessions_PalletId",
+                schema: "putaway",
+                table: "WrappingSessions",
+                column: "PalletId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WrappingSessions_PutawayId",
+                schema: "putaway",
+                table: "WrappingSessions",
+                column: "PutawayId");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "BasketLines",
-                schema: "flow2");
-
-            migrationBuilder.DropTable(
                 name: "CancelLog",
                 schema: "audit");
 
             migrationBuilder.DropTable(
-                name: "POItems",
-                schema: "flow1");
+                name: "PickOrderSubs",
+                schema: "picking");
 
             migrationBuilder.DropTable(
-                name: "ReceiptLines",
-                schema: "flow1");
+                name: "PickStations",
+                schema: "picking");
+
+            migrationBuilder.DropTable(
+                name: "POItems",
+                schema: "receiving");
+
+            migrationBuilder.DropTable(
+                name: "PreworkCutLogs",
+                schema: "putaway");
+
+            migrationBuilder.DropTable(
+                name: "ShipXQueue",
+                schema: "putaway");
 
             migrationBuilder.DropTable(
                 name: "UnloadLines",
-                schema: "flow2");
+                schema: "unload");
 
             migrationBuilder.DropTable(
-                name: "Baskets",
-                schema: "flow2");
+                name: "WrappingSessions",
+                schema: "putaway");
 
             migrationBuilder.DropTable(
-                name: "ReceivingSessions",
-                schema: "flow1");
+                name: "PickOrderDetails",
+                schema: "picking");
+
+            migrationBuilder.DropTable(
+                name: "ReceiptLines",
+                schema: "receiving");
+
+            migrationBuilder.DropTable(
+                name: "UnloadSessions",
+                schema: "unload");
+
+            migrationBuilder.DropTable(
+                name: "PutawaySessions",
+                schema: "putaway");
+
+            migrationBuilder.DropTable(
+                name: "PickOrders",
+                schema: "picking");
 
             migrationBuilder.DropTable(
                 name: "Parts",
                 schema: "master");
 
             migrationBuilder.DropTable(
-                name: "UnloadSessions",
-                schema: "flow2");
-
-            migrationBuilder.DropTable(
-                name: "PurchaseOrders",
-                schema: "flow1");
+                name: "ReceivingSessions",
+                schema: "receiving");
 
             migrationBuilder.DropTable(
                 name: "Pallets",
-                schema: "flow2");
+                schema: "unload");
+
+            migrationBuilder.DropTable(
+                name: "PurchaseOrders",
+                schema: "receiving");
 
             migrationBuilder.DropTable(
                 name: "Suppliers",
