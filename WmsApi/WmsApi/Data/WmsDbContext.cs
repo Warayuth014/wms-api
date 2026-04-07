@@ -33,31 +33,12 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<PickOrderSub> PickOrderSubs { get; set; }
     public DbSet<PickStation> PickStations { get; set; }
 
-    // sorting
-    public DbSet<SortStation> SortStations { get; set; }
-    public DbSet<SortSession> SortSessions { get; set; }
-    public DbSet<SortSessionItem> SortSessionItems { get; set; }
-
     // audit
     public DbSet<CancelLog> CancelLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.ApplyConfigurationsFromAssembly(typeof(WmsDbContext).Assembly);
-
-        // Sorting: ป้องกัน multiple cascade paths ใน SQL Server
-        mb.Entity<SortSessionItem>()
-            .HasOne(i => i.SourcePallet)
-            .WithMany()
-            .HasForeignKey(i => i.SourcePalletId)
-            .OnDelete(DeleteBehavior.NoAction);
-
-        mb.Entity<SortSession>()
-            .HasOne(s => s.SortPallet)
-            .WithMany()
-            .HasForeignKey(s => s.SortPalletId)
-            .OnDelete(DeleteBehavior.NoAction);
-
         base.OnModelCreating(mb);
     }
 }
