@@ -248,6 +248,7 @@ public class PickingService(WmsDbContext db) : IPickingService
               && (l.Status == "PALLETIZED" || l.Status == "PICKING"));
 
         destPallet.Status = "PACKED";
+        destPallet.Location = "ZONE_PACK";
         destPallet.UpdatedAt = DateTime.UtcNow;
 
         var allDetails = await db.PickOrderDetails
@@ -340,10 +341,10 @@ public class PickingService(WmsDbContext db) : IPickingService
         var lines = await db.ReceiptLines
             .Include(l => l.Part)
             .Include(l => l.Pallet)
-            .Where(l => l.Status == "PALLETIZED" && l.PalletId != null
-                     && l.Pallet!.Status != "PACKED"
+            .Where(l => l.Status == "PALLETIZED"
+                     && l.PalletId != null
                      && l.Pallet!.Type == "FG"
-                     && l.Pallet!.Location != "ZONE_PACK"
+                     && (l.Pallet!.Status == "AVAILABLE" || l.Pallet!.Status == "STORED")
                      && !pendingUnloadPallets.Contains(l.PalletId!))
             .OrderBy(l => l.PartId)
             .ToListAsync();
@@ -445,35 +446,11 @@ public class PickingService(WmsDbContext db) : IPickingService
 
         await db.SaveChangesAsync();
 
-        var palletIds = req.Items
-            .Select(i => i.LineId)
-            .Distinct()
-            .ToList();
-
-        var affectedLines = await db.ReceiptLines
-            .Where(l => palletIds.Contains(l.LineId) && l.PalletId != null)
-            .Select(l => l.PalletId!)
-            .Distinct()
-            .ToListAsync();
-
-        var palletsToUpdate = await db.Pallets
-            .Where(p => affectedLines.Contains(p.PalletId) && p.Status != "PICKING")
-            .ToListAsync();
-
-        foreach (var p in palletsToUpdate)
-        {
-            p.Status = "PICKING";
-            p.Location = "PICK";
-            p.UpdatedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync();
-
         return ServiceResult.Ok(new
         {
             Success = true,
             PickOrderId = orderId,
-            Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ, {palletsToUpdate.Count} pallets → PICKING)"
+            Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ)"
         });
     }
 
