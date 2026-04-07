@@ -1,9 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.Hubs;
+using WmsApi.Services.Packing;
 using WmsApi.Services.Picking;
 using WmsApi.Services.Putaway;
 using WmsApi.Services.Receiving;
+using WmsApi.Services.Sorting;
 using WmsApi.Services.Unload;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,9 +24,11 @@ builder.Services.AddSwaggerGen(c =>
 // ── SQL Server ────────────────────────────────
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<IPackingService, PackingService>();
 builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddScoped<IPutawayService, PutawayService>();
 builder.Services.AddScoped<IReceivingService, ReceivingService>();
+builder.Services.AddScoped<ISortingService, SortingService>();
 builder.Services.AddScoped<IUnloadService, UnloadService>();
 
 // ── SignalR ───────────────────────────────────

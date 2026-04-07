@@ -11,6 +11,7 @@ public class Pallet
     public string? Type { get; set; }
     public string Status { get; set; } = "AVAILABLE";
     public string? Location { get; set; }
+    public string? TrackingId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
