@@ -1,34 +1,78 @@
 namespace WmsApi.DTOs;
 
-public record PackingItem(
+// ── Pallet level ──────────────────────────────────
+public record PackingPalletResponse(
+    string PalletId,
+    string Status,
+    string? Location,
+    List<PackingSummary> Packs,
+    string Message
+);
+
+public record PackingSummary(
+    string PackingId,
+    string Status,
+    DateTime CreatedAt,
+    DateTime? CompletedAt,
+    int OrderCount,
+    int OrderDoneCount
+);
+
+// ── Pack level ──────────────────────────────────
+public record PackingDetailResponse(
+    string PackingId,
+    string PalletId,
+    string Status,
+    DateTime CreatedAt,
+    DateTime? CompletedAt,
+    string? TrackingId,
+    List<PackingOrderSummary> Orders
+);
+
+public record PackingOrderSummary(
+    string PickOrderId,
+    string Status,
+    int PartCount,
+    int PartDoneCount
+);
+
+// ── Order level ──────────────────────────────────
+public record PackingOrderResponse(
+    string PackingId,
+    string PickOrderId,
+    string Status,
+    List<PackingPartItem> Parts
+);
+
+public record PackingPartItem(
     string PartId,
     string Owner,
     string Brand,
     string ItemDesc,
     string? ImageUrl,
-    string? LotNumber,
-    int Qty,
-    string Condition
+    int RequiredQty,
+    int ScannedQty
 );
 
-public record PackingScanResponse(
-    string PalletId,
-    string Status,
-    string? Location,
-    string? PickOrderId,
-    List<PackingItem> Items,
-    string Message
+// ── Scan / Confirm ──────────────────────────────────
+public record ScanPackPartRequest(
+    string PackingId,
+    string PickOrderId,
+    string PartId,
+    int Qty,
+    string OperatorId
 );
 
 public record ConfirmPackRequest(
-    string PalletId,
+    string PackingId,
     string OperatorId
 );
 
 public record ConfirmPackResponse(
-    string PalletId,
-    string TrackingId,
+    string PackingId,
     string Status,
-    DateTime PackedAt,
+    string? TrackingId,
+    bool PalletShipped,
+    DateTime CompletedAt,
     string Message
 );

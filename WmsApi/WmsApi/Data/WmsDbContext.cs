@@ -33,12 +33,31 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<PickOrderSub> PickOrderSubs { get; set; }
     public DbSet<PickStation> PickStations { get; set; }
 
+    // packing
+    public DbSet<Packing> Packings { get; set; }
+    public DbSet<PackingDetail> PackingDetails { get; set; }
+    public DbSet<PackingPartScan> PackingPartScans { get; set; }
+
     // audit
     public DbSet<CancelLog> CancelLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.ApplyConfigurationsFromAssembly(typeof(WmsDbContext).Assembly);
+
+        // Packing: ป้องกัน multiple cascade paths ใน SQL Server
+        mb.Entity<PackingDetail>()
+            .HasOne(d => d.PickOrder)
+            .WithMany()
+            .HasForeignKey(d => d.PickOrderId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<Packing>()
+            .HasOne(p => p.Pallet)
+            .WithMany()
+            .HasForeignKey(p => p.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
         base.OnModelCreating(mb);
     }
 }

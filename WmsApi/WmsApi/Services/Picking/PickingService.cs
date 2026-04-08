@@ -261,6 +261,9 @@ public class PickingService(WmsDbContext db) : IPickingService
         {
             order.Status = "COMPLETED";
             order.CompletedAt = DateTime.UtcNow;
+
+            // Auto-create Packing record (1 PickOrder → 1 Packing)
+            await CreatePackingForOrderAsync(req.PickOrderId, req.DestPalletId, req.OperatorId);
         }
 
         await db.SaveChangesAsync();
@@ -451,6 +454,36 @@ public class PickingService(WmsDbContext db) : IPickingService
             Success = true,
             PickOrderId = orderId,
             Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ)"
+        });
+    }
+
+    private async Task CreatePackingForOrderAsync(string pickOrderId, string palletId, string operatorId)
+    {
+        // กันเคสซ้ำ — ถ้ามี Packing detail ที่อ้าง pickOrderId นี้แล้ว ข้ามไป
+        var exists = await db.PackingDetails.AnyAsync(d => d.PickOrderId == pickOrderId);
+        if (exists) return;
+
+        // PackingId format: PK-DDMMYYYY-NNN (ปี พ.ศ.)
+        var now = DateTime.UtcNow;
+        var beYear = now.Year + 543;
+        var prefix = $"PK-{now:ddMM}{beYear}";
+        var todayCount = await db.Packings.CountAsync(p => p.PackingId.StartsWith(prefix));
+        var packingId = $"{prefix}-{(todayCount + 1):D3}";
+
+        db.Packings.Add(new Models.Packing
+        {
+            PackingId = packingId,
+            PalletId = palletId,
+            Status = "OPEN",
+            CreatedBy = operatorId,
+            CreatedAt = now,
+        });
+
+        db.PackingDetails.Add(new PackingDetail
+        {
+            PackingId = packingId,
+            PickOrderId = pickOrderId,
+            Status = "PENDING",
         });
     }
 
