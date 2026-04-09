@@ -135,10 +135,33 @@ public class PackingService(WmsDbContext db) : IPackingService
             return ServiceResult.NotFound(new ApiError(
                 $"Pack นี้ไม่มี Order '{pickOrderId}'"));
 
-        var parts = await db.PickOrderDetails
-            .Include(d => d.Part)
-            .Where(d => d.PickOrderId == pickOrderId)
+        // ดึง Part จาก ReceiptLines ที่อยู่บน Pallet นี้จริงๆ (PALLETIZED)
+        var palletLines = await db.ReceiptLines
+            .Include(l => l.Part)
+            .Where(l => l.PalletId == pack.PalletId
+                     && l.Status == "PALLETIZED"
+                     && l.QtyReceived > 0)
             .ToListAsync();
+
+        // รวม qty ต่อ Part (อาจมีหลาย ReceiptLine สำหรับ Part เดียวกัน)
+        var palletParts = palletLines
+            .GroupBy(l => l.PartId)
+            .Select(g => new
+            {
+                PartId = g.Key,
+                Part = g.First().Part,
+                QtyOnPallet = g.Sum(l => l.QtyReceived),
+            })
+            .OrderBy(x => x.PartId)
+            .ToList();
+
+        // กรองเฉพาะ Part ที่อยู่ใน Order นี้
+        var orderPartIds = await db.PickOrderDetails
+            .Where(d => d.PickOrderId == pickOrderId)
+            .Select(d => d.PartId)
+            .ToListAsync();
+
+        palletParts = palletParts.Where(p => orderPartIds.Contains(p.PartId)).ToList();
 
         var scans = await db.PackingPartScans
             .Where(s => s.PackingId == packingId && s.PickOrderId == pickOrderId)
@@ -146,13 +169,13 @@ public class PackingService(WmsDbContext db) : IPackingService
             .Select(g => new { PartId = g.Key, Total = g.Sum(x => x.ScannedQty) })
             .ToListAsync();
 
-        var items = parts.Select(p => new PackingPartItem(
+        var items = palletParts.Select(p => new PackingPartItem(
             PartId: p.PartId,
             Owner: p.Part?.Owner ?? string.Empty,
             Brand: p.Part?.Brand ?? string.Empty,
             ItemDesc: p.Part?.ItemDesc ?? string.Empty,
             ImageUrl: p.Part?.ImageUrl,
-            RequiredQty: p.RequiredQty,
+            RequiredQty: p.QtyOnPallet,  // จำนวนที่อยู่บน Pallet นี้
             ScannedQty: scans.FirstOrDefault(s => s.PartId == p.PartId)?.Total ?? 0
         )).ToList();
 
@@ -189,13 +212,17 @@ public class PackingService(WmsDbContext db) : IPackingService
             return ServiceResult.NotFound(new ApiError(
                 $"Pack นี้ไม่มี Order '{req.PickOrderId}'"));
 
-        var orderPart = await db.PickOrderDetails
-            .FirstOrDefaultAsync(d => d.PickOrderId == req.PickOrderId
-                                   && d.PartId == req.PartId);
+        // เช็คว่า Part นี้อยู่บน Pallet นี้จริง (ReceiptLines PALLETIZED)
+        var qtyOnPallet = await db.ReceiptLines
+            .Where(l => l.PalletId == pack.PalletId
+                     && l.PartId == req.PartId
+                     && l.Status == "PALLETIZED"
+                     && l.QtyReceived > 0)
+            .SumAsync(l => (int?)l.QtyReceived) ?? 0;
 
-        if (orderPart is null)
+        if (qtyOnPallet == 0)
             return ServiceResult.BadRequest(new ApiError(
-                $"Order '{req.PickOrderId}' ไม่มี Part '{req.PartId}'"));
+                $"Pallet '{pack.PalletId}' ไม่มี Part '{req.PartId}'"));
 
         var alreadyScanned = await db.PackingPartScans
             .Where(s => s.PackingId == req.PackingId
@@ -203,9 +230,9 @@ public class PackingService(WmsDbContext db) : IPackingService
                      && s.PartId == req.PartId)
             .SumAsync(s => (int?)s.ScannedQty) ?? 0;
 
-        if (alreadyScanned + req.Qty > orderPart.RequiredQty)
+        if (alreadyScanned + req.Qty > qtyOnPallet)
             return ServiceResult.BadRequest(new ApiError(
-                $"จำนวนเกิน — ต้องการ {orderPart.RequiredQty}, สแกนแล้ว {alreadyScanned}"));
+                $"จำนวนเกิน — บน Pallet มี {qtyOnPallet}, สแกนแล้ว {alreadyScanned}"));
 
         db.PackingPartScans.Add(new PackingPartScan
         {
@@ -217,9 +244,19 @@ public class PackingService(WmsDbContext db) : IPackingService
             ScannedAt = DateTime.UtcNow,
         });
 
-        // เช็คว่า Order นี้ครบทุก Part หรือยัง → mark DONE
-        var orderParts = await db.PickOrderDetails
+        // เช็คว่า Part ทุกตัวบน Pallet นี้ (ที่อยู่ใน Order) สแกนครบหรือยัง
+        var orderPartIds = await db.PickOrderDetails
             .Where(d => d.PickOrderId == req.PickOrderId)
+            .Select(d => d.PartId)
+            .ToListAsync();
+
+        var palletPartQtys = await db.ReceiptLines
+            .Where(l => l.PalletId == pack.PalletId
+                     && l.Status == "PALLETIZED"
+                     && l.QtyReceived > 0
+                     && orderPartIds.Contains(l.PartId))
+            .GroupBy(l => l.PartId)
+            .Select(g => new { PartId = g.Key, Qty = g.Sum(l => l.QtyReceived) })
             .ToListAsync();
 
         var allScans = await db.PackingPartScans
@@ -233,8 +270,8 @@ public class PackingService(WmsDbContext db) : IPackingService
         }}).GroupBy(s => s.PartId)
            .ToDictionary(g => g.Key, g => g.Sum(x => x.ScannedQty));
 
-        var orderComplete = orderParts.All(op =>
-            simulated.GetValueOrDefault(op.PartId, 0) >= op.RequiredQty);
+        var orderComplete = palletPartQtys.All(p =>
+            simulated.GetValueOrDefault(p.PartId, 0) >= p.Qty);
 
         if (orderComplete && detail.Status != "DONE")
         {

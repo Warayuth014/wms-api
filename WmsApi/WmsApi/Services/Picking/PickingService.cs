@@ -256,14 +256,14 @@ public class PickingService(WmsDbContext db) : IPickingService
             .Where(d => d.PickOrderId == req.PickOrderId)
             .ToListAsync();
 
+        // Auto-create Packing สำหรับ (DestPallet+Order) นี้ — สร้างทุกรอบ
+        await CreatePackingForOrderAsync(req.PickOrderId, req.DestPalletId, req.OperatorId);
+
         var isComplete = allDetails.All(d => d.ReservedQty >= d.RequiredQty);
         if (isComplete)
         {
             order.Status = "COMPLETED";
             order.CompletedAt = DateTime.UtcNow;
-
-            // Auto-create Packing record (1 PickOrder → 1 Packing)
-            await CreatePackingForOrderAsync(req.PickOrderId, req.DestPalletId, req.OperatorId);
         }
 
         await db.SaveChangesAsync();
@@ -459,8 +459,11 @@ public class PickingService(WmsDbContext db) : IPickingService
 
     private async Task CreatePackingForOrderAsync(string pickOrderId, string palletId, string operatorId)
     {
-        // กันเคสซ้ำ — ถ้ามี Packing detail ที่อ้าง pickOrderId นี้แล้ว ข้ามไป
-        var exists = await db.PackingDetails.AnyAsync(d => d.PickOrderId == pickOrderId);
+        // กันเคสซ้ำ — dedup ด้วย (palletId, pickOrderId)
+        var exists = await db.PackingDetails.AnyAsync(d =>
+            d.PickOrderId == pickOrderId
+            && d.Packing != null
+            && d.Packing.PalletId == palletId);
         if (exists) return;
 
         // PackingId format: PK-DDMMYYYY-NNN (ปี พ.ศ.)
