@@ -160,9 +160,13 @@ public class UnloadService(WmsDbContext db) : IUnloadService
             var firstLine = g.First();
             var totalOnPallet = g.Sum(rl => rl.QtyReceived);
 
+            // นับเฉพาะ UnloadLines จาก Session ที่ยังไม่ COMPLETED (รอบปัจจุบัน)
+            // เพื่อไม่ให้หัก UnloadLines จากรอบเก่าที่ Pallet เดิมเคย Unload ไปแล้ว
             var alreadyUnloaded = await db.UnloadLines
+                .Include(l => l.Session)
                 .Where(l => l.PalletId == req.PalletId
                           && l.PartId == partId
+                          && l.Session!.Status != "COMPLETED"
                           && (l.Status == "CONFIRMED" || l.Status == "LOADED" || l.Status == "RETURNED"))
                 .SumAsync(l => (int?)l.QtyUnloaded) ?? 0;
 
@@ -280,10 +284,13 @@ public class UnloadService(WmsDbContext db) : IUnloadService
 
         if (receiptLines.Count > 0)
         {
+            // นับเฉพาะ UnloadLines จาก Session ที่ยังไม่ COMPLETED (รอบปัจจุบัน)
             var previouslyUnloaded = await db.UnloadLines
+                .Include(l => l.Session)
                 .Where(l => l.PalletId == line.PalletId
                           && l.PartId == req.PartId
                           && l.LineId != line.LineId
+                          && l.Session!.Status != "COMPLETED"
                           && (l.Status == "CONFIRMED" || l.Status == "LOADED" || l.Status == "RETURNED"))
                 .SumAsync(l => (int?)l.QtyUnloaded) ?? 0;
 
