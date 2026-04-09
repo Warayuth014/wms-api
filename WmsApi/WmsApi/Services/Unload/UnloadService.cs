@@ -160,13 +160,15 @@ public class UnloadService(WmsDbContext db) : IUnloadService
             var firstLine = g.First();
             var totalOnPallet = g.Sum(rl => rl.QtyReceived);
 
-            // นับเฉพาะ UnloadLines จาก Session ที่ยังไม่ COMPLETED (รอบปัจจุบัน)
-            // เพื่อไม่ให้หัก UnloadLines จากรอบเก่าที่ Pallet เดิมเคย Unload ไปแล้ว
+            // ใช้ ReceivedAt ของ ReceiptLines รอบปัจจุบันเป็นตัวแบ่งรอบ
+            // นับ UnloadLines ที่สร้างหลัง ReceiptLine → เป็นของรอบเดียวกัน
+            // ข้าม UnloadLines รอบเก่า (Pallet หมุนเวียนใหม่) ที่สร้างก่อน ReceiptLine
+            var earliestReceived = g.Min(rl => rl.ReceivedAt);
+
             var alreadyUnloaded = await db.UnloadLines
-                .Include(l => l.Session)
                 .Where(l => l.PalletId == req.PalletId
                           && l.PartId == partId
-                          && l.Session!.Status != "COMPLETED"
+                          && l.UpdatedAt >= earliestReceived
                           && (l.Status == "CONFIRMED" || l.Status == "LOADED" || l.Status == "RETURNED"))
                 .SumAsync(l => (int?)l.QtyUnloaded) ?? 0;
 
@@ -284,13 +286,14 @@ public class UnloadService(WmsDbContext db) : IUnloadService
 
         if (receiptLines.Count > 0)
         {
-            // นับเฉพาะ UnloadLines จาก Session ที่ยังไม่ COMPLETED (รอบปัจจุบัน)
+            // ใช้ ReceivedAt ของ ReceiptLines เป็นตัวแบ่งรอบ
+            var earliestReceived = receiptLines.Min(r => r.ReceivedAt);
+
             var previouslyUnloaded = await db.UnloadLines
-                .Include(l => l.Session)
                 .Where(l => l.PalletId == line.PalletId
                           && l.PartId == req.PartId
                           && l.LineId != line.LineId
-                          && l.Session!.Status != "COMPLETED"
+                          && l.UpdatedAt >= earliestReceived
                           && (l.Status == "CONFIRMED" || l.Status == "LOADED" || l.Status == "RETURNED"))
                 .SumAsync(l => (int?)l.QtyUnloaded) ?? 0;
 

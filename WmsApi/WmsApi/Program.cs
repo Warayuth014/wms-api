@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.Hubs;
+using WmsApi.Services.Basket;
 using WmsApi.Services.Packing;
 using WmsApi.Services.Picking;
 using WmsApi.Services.Putaway;
@@ -23,6 +24,7 @@ builder.Services.AddSwaggerGen(c =>
 // ── SQL Server ────────────────────────────────
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<IBasketService, BasketService>();
 builder.Services.AddScoped<IPackingService, PackingService>();
 builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddScoped<IPutawayService, PutawayService>();

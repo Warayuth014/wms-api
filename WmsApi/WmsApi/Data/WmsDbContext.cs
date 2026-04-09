@@ -38,6 +38,10 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<PackingDetail> PackingDetails { get; set; }
     public DbSet<PackingPartScan> PackingPartScans { get; set; }
 
+    // basket
+    public DbSet<Basket> Baskets { get; set; }
+    public DbSet<BasketLine> BasketLines { get; set; }
+
     // audit
     public DbSet<CancelLog> CancelLogs { get; set; }
 
@@ -56,6 +60,25 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .HasOne(p => p.Pallet)
             .WithMany()
             .HasForeignKey(p => p.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // Basket: ป้องกัน multiple cascade paths
+        mb.Entity<BasketLine>()
+            .HasOne(l => l.Basket)
+            .WithMany(b => b.Lines)
+            .HasForeignKey(l => l.BasketId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<BasketLine>()
+            .HasOne(l => l.UnloadLine)
+            .WithMany()
+            .HasForeignKey(l => l.UnloadLineId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<BasketLine>()
+            .HasOne(l => l.Pallet)
+            .WithMany()
+            .HasForeignKey(l => l.PalletId)
             .OnDelete(DeleteBehavior.NoAction);
 
         base.OnModelCreating(mb);
