@@ -16,6 +16,11 @@ public class Packing
     public string Status { get; set; } = "OPEN"; // OPEN | DONE
 
     [Column(TypeName = "nvarchar(50)")]
+    public string? PickOrderId { get; set; }
+
+    public int SeqNo { get; set; }
+
+    [Column(TypeName = "nvarchar(50)")]
     public string? TrackingId { get; set; }
 
     [Column(TypeName = "nvarchar(50)")]

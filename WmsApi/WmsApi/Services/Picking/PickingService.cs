@@ -477,6 +477,7 @@ public class PickingService(WmsDbContext db) : IPickingService
         {
             PackingId = packingId,
             PalletId = palletId,
+            PickOrderId = pickOrderId,
             Status = "OPEN",
             CreatedBy = operatorId,
             CreatedAt = now,
