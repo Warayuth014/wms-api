@@ -33,11 +33,18 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
         }
         else
         {
-            if (pallet.Status is not ("FG" or "PW"))
+            if (pallet.Status == "AVAILABLE" && pallet.Location == "ASRS")
+            {
+                return ServiceResult.BadRequest(new ApiError(
+                    $"Pallet '{palletId}' อยู่ใน ASRS แล้ว",
+                    "Pallet นี้ถูกจัดเก็บเข้า ASRS เรียบร้อยแล้ว"));
+            }
+
+            if (pallet.Status is not ("FG" or "PW" or "AVAILABLE"))
             {
                 return ServiceResult.BadRequest(new ApiError(
                     $"Pallet '{palletId}' ไม่พร้อม Putaway (สถานะปัจจุบัน: {pallet.Status})",
-                    "Pallet ต้องเป็นสถานะ FG, PW เท่านั้น"));
+                    "Pallet ต้องเป็นสถานะ FG, PW หรือ AVAILABLE เท่านั้น"));
             }
         }
 
@@ -58,11 +65,14 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
             Condition: l.Condition
         )).ToList();
 
-        var suggested = pallet.Type == "FG" ? "ASRS" : "PREWORK";
+        var suggested = pallet.Status == "AVAILABLE" ? "ASRS"
+            : pallet.Type == "FG" ? "ASRS" : "PREWORK";
 
-        var message = pallet.Type == "FG"
-            ? "Pallet FG → เก็บเข้า ASRS"
-            : "Pallet PW → แนะนำ Prework (เลือก ASRS ได้)";
+        var message = pallet.Status == "AVAILABLE"
+            ? "Pallet ว่าง → ส่งเข้า ASRS"
+            : pallet.Type == "FG"
+                ? "Pallet FG → เก็บเข้า ASRS"
+                : "Pallet PW → แนะนำ Prework (เลือก ASRS ได้)";
 
         return ServiceResult.Ok(new ScanPalletForPutawayResponse(
             PalletId: pallet.PalletId,
@@ -80,10 +90,16 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
         if (pallet is null)
             return ServiceResult.NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
 
-        if (pallet.Status is not ("FG" or "PW" or "PREWORK"))
+        if (pallet.Status is not ("FG" or "PW" or "PREWORK" or "AVAILABLE"))
         {
             return ServiceResult.BadRequest(new ApiError(
                 $"Pallet '{req.PalletId}' ไม่พร้อม Putaway (สถานะ: {pallet.Status})"));
+        }
+
+        if (pallet.Status == "AVAILABLE" && pallet.Location == "ASRS")
+        {
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pallet '{req.PalletId}' อยู่ใน ASRS แล้ว"));
         }
 
         var operator_ = await db.Users.FindAsync(req.OperatorId);

@@ -449,11 +449,78 @@ public class PickingService(WmsDbContext db) : IPickingService
 
         await db.SaveChangesAsync();
 
+        // ── อัปเดต Pallet: Status → PICKING, assign Station ──
+        var palletIds = await db.ReceiptLines
+            .Where(l => db.PickOrderSubs
+                .Where(s => s.PickOrderDetail!.PickOrderId == orderId)
+                .Select(s => s.ReceiptLineId)
+                .Contains(l.LineId))
+            .Select(l => l.PalletId)
+            .Distinct()
+            .ToListAsync();
+
+        var availableStations = await db.PickStations
+            .Where(s => s.CurrentPalletId == null)
+            .OrderBy(s => s.StationId)
+            .ToListAsync();
+
+        var stationIndex = 0;
+        var assignedPallets = new List<string>();
+
+        foreach (var pid in palletIds)
+        {
+            if (pid is null) continue;
+
+            var pallet = await db.Pallets.FindAsync(pid);
+            if (pallet is null) continue;
+
+            // เช็คว่า pallet อยู่ station อยู่แล้วหรือยัง
+            var existingStation = await db.PickStations
+                .FirstOrDefaultAsync(s => s.CurrentPalletId == pid);
+
+            if (existingStation is not null)
+            {
+                // อยู่ station แล้ว แค่อัปเดต status
+                pallet.Status = "PICKING";
+                pallet.UpdatedAt = DateTime.UtcNow;
+                assignedPallets.Add($"{pid}→{existingStation.StationId}");
+                continue;
+            }
+
+            if (stationIndex >= availableStations.Count)
+            {
+                // Station เต็ม — ไม่ assign แต่ยังสร้าง order ได้
+                continue;
+            }
+
+            var station = availableStations[stationIndex++];
+            station.CurrentPalletId = pid;
+
+            pallet.Status = "PICKING";
+            pallet.Location = station.StationId;
+            pallet.UpdatedAt = DateTime.UtcNow;
+
+            // อัปเดต ReceiptLines บน Pallet นี้ด้วย
+            var receiptLines = await db.ReceiptLines
+                .Where(l => l.PalletId == pid && l.Status == "PALLETIZED")
+                .ToListAsync();
+            foreach (var rl in receiptLines)
+                rl.Status = "PICKING";
+
+            assignedPallets.Add($"{pid}→{station.StationId}");
+        }
+
+        await db.SaveChangesAsync();
+
+        var stationMsg = assignedPallets.Count > 0
+            ? $" | Pallet: {string.Join(", ", assignedPallets)}"
+            : "";
+
         return ServiceResult.Ok(new
         {
             Success = true,
             PickOrderId = orderId,
-            Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ)"
+            Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ){stationMsg}"
         });
     }
 

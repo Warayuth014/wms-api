@@ -32,9 +32,9 @@ public class BasketService(WmsDbContext db) : IBasketService
             .Select(g => new { UnloadLineId = g.Key, BasketId = g.OrderByDescending(x => x.LoadedAt).First().BasketId })
             .ToDictionaryAsync(x => x.UnloadLineId, x => x.BasketId);
 
-        // Group by Part+Lot
+        // Group by Owner+Part+Lot
         var grouped = lines
-            .GroupBy(l => new { l.PartId, l.LotNumber })
+            .GroupBy(l => new { Owner = l.Part?.Owner ?? string.Empty, l.PartId, l.LotNumber })
             .Select(g =>
             {
                 var first = g.First();
