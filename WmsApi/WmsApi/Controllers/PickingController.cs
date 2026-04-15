@@ -36,4 +36,8 @@ public class PickingController(IPickingService service) : ControllerBase
     [HttpPost("create-test-order")]
     public async Task<IActionResult> CreateTestOrder([FromBody] CreateTestOrderRequest req) =>
         this.ToActionResult(await service.CreateTestOrderAsync(req));
+
+    [HttpPost("send-to-pack/{palletId}")]
+    public async Task<IActionResult> SendToPack(string palletId) =>
+        this.ToActionResult(await service.SendToPackAsync(palletId));
 }

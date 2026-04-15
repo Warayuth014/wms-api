@@ -248,7 +248,6 @@ public class PickingService(WmsDbContext db) : IPickingService
               && (l.Status == "PALLETIZED" || l.Status == "PICKING"));
 
         destPallet.Status = "PACKED";
-        destPallet.Location = "ZONE_PACK";
         destPallet.UpdatedAt = DateTime.UtcNow;
 
         var allDetails = await db.PickOrderDetails
@@ -521,6 +520,28 @@ public class PickingService(WmsDbContext db) : IPickingService
             Success = true,
             PickOrderId = orderId,
             Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ){stationMsg}"
+        });
+    }
+
+    public async Task<ServiceResult> SendToPackAsync(string palletId)
+    {
+        var pallet = await db.Pallets.FindAsync(palletId);
+        if (pallet is null)
+            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pallet '{palletId}'"));
+
+        if (pallet.Status != "PACKED")
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pallet '{palletId}' สถานะ '{pallet.Status}' — ต้องเป็น PACKED"));
+
+        pallet.Location = "ZONE_PACK";
+        pallet.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return ServiceResult.Ok(new
+        {
+            Success = true,
+            PalletId = palletId,
+            Message = $"✅ Pallet '{palletId}' ส่งไป ZONE_PACK เรียบร้อย"
         });
     }
 

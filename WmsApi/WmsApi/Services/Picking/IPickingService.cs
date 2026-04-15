@@ -12,4 +12,5 @@ public interface IPickingService
     Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req);
     Task<ServiceResult> GetAvailableLinesAsync();
     Task<ServiceResult> CreateTestOrderAsync(CreateTestOrderRequest req);
+    Task<ServiceResult> SendToPackAsync(string palletId);
 }
