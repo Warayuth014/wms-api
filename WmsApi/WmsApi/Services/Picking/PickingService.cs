@@ -45,6 +45,11 @@ public class PickingService(WmsDbContext db) : IPickingService
         if (pallet is null)
             return ServiceResult.NotFound(new ApiError($"ไม่พบ Pallet '{req.PalletId}'"));
 
+        if (pallet.Status == "PACKED")
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pallet '{req.PalletId}' ถูก Pack แล้ว — กรุณาส่งไป ZONE PACK หรือสแกน Pallet อื่น",
+                "ต้องการส่ง Pallet กลับหรือไม่?"));
+
         if (pallet.Status != "AVAILABLE" && pallet.Status != "STORED" && pallet.Status != "PICKING")
             return ServiceResult.BadRequest(new ApiError(
                 $"Pallet '{req.PalletId}' ไม่พร้อมสำหรับ Pick (สถานะ: {pallet.Status})"));
@@ -297,6 +302,23 @@ public class PickingService(WmsDbContext db) : IPickingService
             return ServiceResult.NotFound(new ApiError($"ไม่พบ Pallet '{req.PalletId}'"));
 
         var dest = string.IsNullOrWhiteSpace(req.Destination) ? "ASRS" : req.Destination.ToUpper();
+
+        // PACKED pallet → แค่เปลี่ยน Location ไม่แตะ Status/Type
+        if (pallet.Status == "PACKED")
+        {
+            pallet.Location = dest;
+            pallet.UpdatedAt = DateTime.UtcNow;
+
+            // clear station ถ้ามี
+            var packedStation = await db.PickStations
+                .FirstOrDefaultAsync(s => s.CurrentPalletId == req.PalletId);
+            if (packedStation is not null)
+                packedStation.CurrentPalletId = null;
+
+            await db.SaveChangesAsync();
+            return ServiceResult.Ok(new ApiSuccess(true,
+                $"📦 Pallet '{req.PalletId}' ส่งไป {dest} (PACKED)"));
+        }
 
         var hasItems = await db.ReceiptLines.AnyAsync(
             l => l.PalletId == req.PalletId
