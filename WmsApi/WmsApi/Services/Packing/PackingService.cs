@@ -334,7 +334,7 @@ public class PackingService(WmsDbContext db) : IPackingService
             if (pallet != null)
             {
                 pallet.Status = "SHIPPED";
-                pallet.Location = "ZONE_SORT";
+                pallet.Location = "SHIPPED";
                 pallet.TrackingId = trackingId;
                 pallet.UpdatedAt = completedAt;
                 palletShipped = true;
@@ -350,7 +350,7 @@ public class PackingService(WmsDbContext db) : IPackingService
             PalletShipped: palletShipped,
             CompletedAt: completedAt,
             Message: palletShipped
-                ? $"Pack สำเร็จ + Pallet ส่งไป Sort แล้ว"
+                ? $"Pack สำเร็จ — Pallet พร้อมจัดส่ง"
                 : $"Pack สำเร็จ (ยังเหลือ Pack อื่นใน Pallet)"
         ));
     }
