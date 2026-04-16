@@ -2,6 +2,7 @@
 using WmsApi.Data;
 using WmsApi.Hubs;
 using WmsApi.Services.Basket;
+using WmsApi.Services.CheckIn;
 using WmsApi.Services.Packing;
 using WmsApi.Services.Picking;
 using WmsApi.Services.Putaway;
@@ -25,6 +26,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<WmsDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddScoped<IBasketService, BasketService>();
+builder.Services.AddScoped<ICheckInService, CheckInService>();
 builder.Services.AddScoped<IPackingService, PackingService>();
 builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddScoped<IPutawayService, PutawayService>();

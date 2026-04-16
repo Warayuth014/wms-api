@@ -37,6 +37,8 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<Packing> Packings { get; set; }
     public DbSet<PackingDetail> PackingDetails { get; set; }
     public DbSet<PackingPartScan> PackingPartScans { get; set; }
+    public DbSet<CheckInSlot> CheckInSlots { get; set; }
+    public DbSet<CheckInEntry> CheckInEntries { get; set; }
 
     // basket
     public DbSet<Basket> Baskets { get; set; }
@@ -61,6 +63,23 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .WithMany()
             .HasForeignKey(p => p.PalletId)
             .OnDelete(DeleteBehavior.NoAction);
+
+        // CheckIn
+        mb.Entity<CheckInEntry>()
+            .HasOne(e => e.Slot)
+            .WithMany(s => s.Entries)
+            .HasForeignKey(e => e.SlotId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<CheckInEntry>()
+            .HasOne(e => e.Packing)
+            .WithMany()
+            .HasForeignKey(e => e.PackingId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<CheckInEntry>()
+            .HasIndex(e => e.PackingId)
+            .IsUnique();
 
         // Basket: ป้องกัน multiple cascade paths
         mb.Entity<BasketLine>()
