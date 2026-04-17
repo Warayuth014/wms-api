@@ -10,4 +10,5 @@ public interface IPackingService
     Task<ServiceResult> GetOrderAsync(string packingId, string pickOrderId);
     Task<ServiceResult> ScanPartAsync(ScanPackPartRequest req);
     Task<ServiceResult> ConfirmPackAsync(ConfirmPackRequest req);
+    Task<ServiceResult> SplitPackAsync(SplitPackRequest req);
 }

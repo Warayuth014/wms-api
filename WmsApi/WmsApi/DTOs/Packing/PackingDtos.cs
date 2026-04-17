@@ -76,3 +76,17 @@ public record ConfirmPackResponse(
     DateTime CompletedAt,
     string Message
 );
+
+// ── Split Pack ──────────────────────────────────
+public record SplitPackRequest(
+    string PackingId,
+    string OperatorId
+);
+
+public record SplitPackResponse(
+    string ClosedPackingId,
+    string NewPackingId,
+    int ItemsInClosedPack,
+    int RemainingItems,
+    string Message
+);

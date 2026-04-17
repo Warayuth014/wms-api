@@ -222,11 +222,25 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             .Where(e => e.SlotId == slot.SlotId)
             .ToListAsync();
 
+        // อัปเดต CheckInEntry + Packing → SHIPPED
+        var packingIds = entries.Select(e => e.PackingId).ToList();
+        var packings = await db.Packings
+            .Where(p => packingIds.Contains(p.PackingId))
+            .ToListAsync();
+
         foreach (var e in entries)
         {
             e.Status = "SHIPPED";
             e.ShippedAt = shippedAt;
         }
+
+        foreach (var p in packings)
+        {
+            p.Status = "SHIPPED";
+        }
+
+        // Pallet ถูก reset เป็น AVAILABLE ตั้งแต่ตอน Packing confirm แล้ว
+        // ไม่ต้องยุ่งกับ Pallet ตรงนี้
 
         await db.SaveChangesAsync();
 
@@ -249,7 +263,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         var inSlot = await db.CheckInEntries
             .CountAsync(e => e.SlotId == slotId);
 
-        // หา Pack ทั้งหมดของ Owner นี้ที่ยัง Not Shipped (= ต้อง check-in)
+        // Expected = Pack DONE ของ Owner นี้ (SHIPPED จะไม่นับ เพราะ Status เปลี่ยนแล้ว)
         var expected = await db.Packings
             .Where(p => p.Status == "DONE")
             .Where(p => db.PackingDetails
