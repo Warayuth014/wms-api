@@ -16,6 +16,25 @@ public record ScanCheckInResponse(
     string Message
 );
 
+// ── Preview ก่อน Check-IN (ไม่เขียน DB) ──────────────────────
+public record PreviewCheckInRequest(
+    string PackingId
+);
+
+public record PreviewCheckInResponse(
+    string PackingId,
+    string Owner,
+    string? CustomerOrderId,
+    string PackStatus,
+    int ItemCount,
+    int OrderCount,
+    string SlotId,        // slot ที่จะถูก assign (ของเดิมหรือชื่อใหม่)
+    bool IsNewSlot,       // true = จะสร้าง slot ใหม่
+    bool IsAlreadyCheckedIn,
+    string? DispatchDestination,
+    string Message
+);
+
 // ── Slot detail ──────────────────────────────────
 public record CheckInSlotDetail(
     string SlotId,
@@ -28,12 +47,10 @@ public record CheckInSlotDetail(
     bool IsReadyToComplete,
     List<CheckInCartonItem> Cartons,
     string? CustomerOrderId = null,
-    int PickTotal = 0,
-    int PickCurrent = 0,
-    int PackTotal = 0,
-    int PackCurrent = 0,
-    int CheckInTotal = 0,
-    int CheckInCurrent = 0
+    int PipelineTotal = 0,
+    int PickDone = 0,
+    int PackDone = 0,
+    int CheckInDone = 0
 );
 
 public record CheckInCartonItem(

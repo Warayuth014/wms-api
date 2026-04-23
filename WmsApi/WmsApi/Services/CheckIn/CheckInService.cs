@@ -8,6 +8,107 @@ namespace WmsApi.Services.CheckIn;
 
 public class CheckInService(WmsDbContext db) : ICheckInService
 {
+    // สถานที่ปลายทางให้สุ่มแนะนำ operator ตอน preview (mock)
+    private static readonly string[] _dispatchDestinations =
+        ["ประตู 1", "ประตู 2", "ประตู 3", "ประตู VIP", "ท่า A", "ท่า B", "ท่า C", "Dock 1", "Dock 2"];
+
+    // ── 0) Preview Pack ก่อน Check-IN (ไม่เขียน DB) ──────────────
+    public async Task<ServiceResult> PreviewCartonAsync(PreviewCheckInRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.PackingId))
+            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Packing ID"));
+
+        var packingId = req.PackingId.Trim().ToUpper();
+
+        var pack = await db.Packings
+            .Include(p => p.Details)
+            .FirstOrDefaultAsync(p => p.PackingId == packingId);
+
+        if (pack is null)
+            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pack '{packingId}'"));
+
+        if (pack.Status == "OPEN")
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pack '{packingId}' ยัง Pack ไม่เสร็จ (สถานะ: {pack.Status})"));
+
+        // Owner + CustomerOrderId จาก PickOrder ของ Pack
+        var orderIds = pack.Details.Select(d => d.PickOrderId).ToList();
+        var owner = await db.PickOrderDetails
+            .Where(d => orderIds.Contains(d.PickOrderId))
+            .Join(db.Parts, d => d.PartId, p => p.PartId, (d, p) => p.Owner)
+            .Distinct()
+            .FirstOrDefaultAsync() ?? string.Empty;
+
+        var customerOrderId = await db.PickOrders
+            .Where(p => orderIds.Contains(p.PickOrderId) && p.CustomerOrderId != null)
+            .Select(p => p.CustomerOrderId)
+            .FirstOrDefaultAsync();
+
+        var itemCount = await db.PackingPartScans
+            .Where(s => s.PackingId == packingId)
+            .SumAsync(s => (int?)s.ScannedQty) ?? 0;
+
+        var orderCount = pack.Details.Select(d => d.PickOrderId).Distinct().Count();
+
+        // ตรวจว่า Pack นี้ถูก check-in ไปแล้วหรือยัง
+        var existingEntry = await db.CheckInEntries
+            .FirstOrDefaultAsync(e => e.PackingId == packingId);
+
+        // หา slot ที่จะใช้: ของ customer order เดียวกันที่ยัง OPEN > fallback owner + no-CO
+        string slotId;
+        bool isNewSlot;
+        if (existingEntry != null)
+        {
+            slotId = existingEntry.SlotId;
+            isNewSlot = false;
+        }
+        else
+        {
+            CheckInSlot? slot = null;
+            if (customerOrderId != null)
+            {
+                slot = await db.CheckInSlots
+                    .FirstOrDefaultAsync(s => s.CustomerOrderId == customerOrderId && s.Status == "OPEN");
+            }
+            slot ??= await db.CheckInSlots
+                .FirstOrDefaultAsync(s => s.Owner == owner && s.Status == "OPEN" && s.CustomerOrderId == null);
+
+            if (slot != null)
+            {
+                slotId = slot.SlotId;
+                isNewSlot = false;
+            }
+            else
+            {
+                var nextNo = await GetNextSlotNumberAsync();
+                slotId = $"SLOT-{nextNo:D2}";
+                isNewSlot = true;
+            }
+        }
+
+        // สุ่มปลายทาง — seed ด้วย packingId เพื่อให้ Pack เดียวเห็นปลายทางเดียวกันเสมอ
+        var destination = _dispatchDestinations[Math.Abs(packingId.GetHashCode()) % _dispatchDestinations.Length];
+
+        var isAlreadyCheckedIn = existingEntry != null;
+        var message = isAlreadyCheckedIn
+            ? $"Pack '{packingId}' ถูก check-in แล้วที่ช่อง '{slotId}'"
+            : $"พร้อม check-in ที่ช่อง '{slotId}'";
+
+        return ServiceResult.Ok(new PreviewCheckInResponse(
+            PackingId: packingId,
+            Owner: owner,
+            CustomerOrderId: customerOrderId,
+            PackStatus: pack.Status,
+            ItemCount: itemCount,
+            OrderCount: orderCount,
+            SlotId: slotId,
+            IsNewSlot: isNewSlot,
+            IsAlreadyCheckedIn: isAlreadyCheckedIn,
+            DispatchDestination: destination,
+            Message: message
+        ));
+    }
+
     // ── 1) สแกน Carton (PackingId) → assign Slot ตาม Owner ───────
     public async Task<ServiceResult> ScanCartonAsync(ScanCheckInRequest req)
     {
@@ -162,7 +263,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         var (inSlot, expected) = await ComputeSlotProgressAsync(slotId, slot.Owner);
         var isReady = inSlot >= expected && expected > 0;
 
-        var progress = await ComputePipelineProgressAsync(slot);
+        var progress = await ComputePipelineProgressAsync(slot.CustomerOrderId, slot.Owner);
 
         return ServiceResult.Ok(new CheckInSlotDetail(
             SlotId: slot.SlotId,
@@ -175,11 +276,9 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             IsReadyToComplete: isReady,
             Cartons: cartons,
             CustomerOrderId: slot.CustomerOrderId,
-            PickTotal: progress.PickTotal,
+            PipelineTotal: progress.PipelineTotal,
             PickDone: progress.PickDone,
-            PackTotal: progress.PackTotal,
             PackDone: progress.PackDone,
-            CheckInTotal: progress.CheckInTotal,
             CheckInDone: progress.CheckInDone
         ));
     }
@@ -322,17 +421,21 @@ public class CheckInService(WmsDbContext db) : ICheckInService
     // ── Helpers ──────────────────────────────────
     /// <summary>
     /// คำนวณ 3-column progress (Pick / Pack / CheckIn) สำหรับ Slot
-    /// อิงจาก CustomerOrder ถ้ามี — ไม่งั้น fallback ไป Owner
+    /// semantics: cumulative done — column คือจำนวน Pack ที่ผ่านขั้นตอนนั้น ๆ แล้ว
+    ///   denominator เดียวกัน = จำนวน Pack ทั้งหมดของ CustomerOrder
+    ///   Pick done    = Packs ที่ PickOrder = COMPLETED
+    ///   Pack done    = Packs ที่ Status in (DONE / STAGED / SHIPPED)
+    ///   CheckIn done = Packs ที่ Status in (STAGED / SHIPPED)
     /// </summary>
-    private async Task<(int PickTotal, int PickDone, int PackTotal, int PackDone, int CheckInTotal, int CheckInDone)>
-        ComputePipelineProgressAsync(CheckInSlot slot)
+    private async Task<(int PipelineTotal, int PickDone, int PackDone, int CheckInDone)>
+        ComputePipelineProgressAsync(string? customerOrderId, string owner)
     {
-        // PickOrders ของ CustomerOrder นี้ — fallback: PickOrders ที่มี Part ของ Owner + เวลาใกล้กัน
+        // PickOrders ของ CustomerOrder นี้ — fallback: PickOrders ที่มี Part ของ Owner
         List<string> pickOrderIds;
-        if (slot.CustomerOrderId != null)
+        if (customerOrderId != null)
         {
             pickOrderIds = await db.PickOrders
-                .Where(p => p.CustomerOrderId == slot.CustomerOrderId)
+                .Where(p => p.CustomerOrderId == customerOrderId)
                 .Select(p => p.PickOrderId)
                 .ToListAsync();
         }
@@ -341,30 +444,31 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             pickOrderIds = await db.PickOrderDetails
                 .Where(d => d.PickOrder!.Status == "OPEN" || d.PickOrder!.Status == "COMPLETED")
                 .Join(db.Parts, d => d.PartId, p => p.PartId, (d, p) => new { d.PickOrderId, p.Owner })
-                .Where(x => x.Owner == slot.Owner)
+                .Where(x => x.Owner == owner)
                 .Select(x => x.PickOrderId)
                 .Distinct()
                 .ToListAsync();
         }
 
-        var pickTotal = pickOrderIds.Count;
-        var pickDone = await db.PickOrders
-            .CountAsync(p => pickOrderIds.Contains(p.PickOrderId) && p.Status == "COMPLETED");
-
-        // Packs ของ PickOrders เหล่านี้
+        // Packs ของ PickOrders เหล่านี้ (denominator = จำนวน Pack ทั้งหมด)
         var packs = await db.Packings
             .Where(p => p.PickOrderId != null && pickOrderIds.Contains(p.PickOrderId))
-            .Select(p => p.Status)
+            .Select(p => new { p.Status, p.PickOrderId })
             .ToListAsync();
 
-        var packTotal = packs.Count;
-        var packDone = packs.Count(s => s == "DONE" || s == "STAGED" || s == "SHIPPED");
+        var pipelineTotal = packs.Count;
 
-        // CheckIn: ใช้ PackTotal เป็น denominator
-        var checkInTotal = packTotal;
-        var checkInDone = packs.Count(s => s == "STAGED" || s == "SHIPPED");
+        // Pick done = Packs ที่ PickOrder = COMPLETED
+        var completedPickOrderIds = await db.PickOrders
+            .Where(p => pickOrderIds.Contains(p.PickOrderId) && p.Status == "COMPLETED")
+            .Select(p => p.PickOrderId)
+            .ToListAsync();
+        var pickDone = packs.Count(p => p.PickOrderId != null && completedPickOrderIds.Contains(p.PickOrderId));
 
-        return (pickTotal, pickDone, packTotal, packDone, checkInTotal, checkInDone);
+        var packDone = packs.Count(p => p.Status == "DONE" || p.Status == "STAGED" || p.Status == "SHIPPED");
+        var checkInDone = packs.Count(p => p.Status == "STAGED" || p.Status == "SHIPPED");
+
+        return (pipelineTotal, pickDone, packDone, checkInDone);
     }
 
     /// <summary>

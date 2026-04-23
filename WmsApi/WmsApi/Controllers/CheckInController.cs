@@ -9,6 +9,10 @@ namespace WmsApi.Controllers;
 [Route("api/checkin")]
 public class CheckInController(ICheckInService service) : ControllerBase
 {
+    [HttpPost("preview")]
+    public async Task<IActionResult> Preview([FromBody] PreviewCheckInRequest req) =>
+        this.ToActionResult(await service.PreviewCartonAsync(req));
+
     [HttpPost("scan")]
     public async Task<IActionResult> Scan([FromBody] ScanCheckInRequest req) =>
         this.ToActionResult(await service.ScanCartonAsync(req));
