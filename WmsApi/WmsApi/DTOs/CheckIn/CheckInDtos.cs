@@ -28,11 +28,21 @@ public record PreviewCheckInResponse(
     string PackStatus,
     int ItemCount,
     int OrderCount,
+    List<string> PickOrderIds,
     string SlotId,        // slot ที่จะถูก assign (ของเดิมหรือชื่อใหม่)
     bool IsNewSlot,       // true = จะสร้าง slot ใหม่
     bool IsAlreadyCheckedIn,
     string? DispatchDestination,
+    List<PreviewCheckInItem> Items,
     string Message
+);
+
+public record PreviewCheckInItem(
+    string PartId,
+    string ItemDesc,
+    string Brand,
+    string? ImageUrl,
+    int Qty
 );
 
 // ── Slot detail ──────────────────────────────────

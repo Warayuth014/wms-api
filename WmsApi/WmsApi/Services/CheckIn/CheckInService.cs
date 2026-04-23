@@ -33,6 +33,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
 
         // Owner + CustomerOrderId จาก PickOrder ของ Pack
         var orderIds = pack.Details.Select(d => d.PickOrderId).ToList();
+        var pickOrderIds = orderIds.Distinct().OrderBy(id => id).ToList();
         var owner = await db.PickOrderDetails
             .Where(d => orderIds.Contains(d.PickOrderId))
             .Join(db.Parts, d => d.PartId, p => p.PartId, (d, p) => p.Owner)
@@ -44,11 +45,32 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             .Select(p => p.CustomerOrderId)
             .FirstOrDefaultAsync();
 
-        var itemCount = await db.PackingPartScans
+        var scannedParts = await db.PackingPartScans
             .Where(s => s.PackingId == packingId)
-            .SumAsync(s => (int?)s.ScannedQty) ?? 0;
+            .GroupBy(s => s.PartId)
+            .Select(g => new { PartId = g.Key, Qty = g.Sum(x => x.ScannedQty) })
+            .OrderBy(x => x.PartId)
+            .ToListAsync();
 
-        var orderCount = pack.Details.Select(d => d.PickOrderId).Distinct().Count();
+        var partIds = scannedParts.Select(x => x.PartId).ToList();
+        var partsById = await db.Parts
+            .Where(p => partIds.Contains(p.PartId))
+            .ToDictionaryAsync(p => p.PartId);
+
+        var items = scannedParts.Select(x =>
+        {
+            partsById.TryGetValue(x.PartId, out var part);
+            return new PreviewCheckInItem(
+                PartId: x.PartId,
+                ItemDesc: part?.ItemDesc ?? string.Empty,
+                Brand: part?.Brand ?? string.Empty,
+                ImageUrl: part?.ImageUrl,
+                Qty: x.Qty
+            );
+        }).ToList();
+
+        var itemCount = items.Sum(i => i.Qty);
+        var orderCount = pickOrderIds.Count;
 
         // ตรวจว่า Pack นี้ถูก check-in ไปแล้วหรือยัง
         var existingEntry = await db.CheckInEntries
@@ -101,10 +123,12 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             PackStatus: pack.Status,
             ItemCount: itemCount,
             OrderCount: orderCount,
+            PickOrderIds: pickOrderIds,
             SlotId: slotId,
             IsNewSlot: isNewSlot,
             IsAlreadyCheckedIn: isAlreadyCheckedIn,
             DispatchDestination: destination,
+            Items: items,
             Message: message
         ));
     }
