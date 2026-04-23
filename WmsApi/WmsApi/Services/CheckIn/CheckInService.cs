@@ -116,6 +116,8 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             ? $"Pack '{packingId}' ถูก check-in แล้วที่ช่อง '{slotId}'"
             : $"พร้อม check-in ที่ช่อง '{slotId}'";
 
+        var progress = await ComputePipelineProgressAsync(customerOrderId, owner);
+
         return ServiceResult.Ok(new PreviewCheckInResponse(
             PackingId: packingId,
             Owner: owner,
@@ -129,7 +131,11 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             IsAlreadyCheckedIn: isAlreadyCheckedIn,
             DispatchDestination: destination,
             Items: items,
-            Message: message
+            Message: message,
+            PipelineTotal: progress.PipelineTotal,
+            PickDone: progress.PickDone,
+            PackDone: progress.PackDone,
+            CheckInDone: progress.CheckInDone
         ));
     }
 

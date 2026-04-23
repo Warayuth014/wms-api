@@ -34,7 +34,11 @@ public record PreviewCheckInResponse(
     bool IsAlreadyCheckedIn,
     string? DispatchDestination,
     List<PreviewCheckInItem> Items,
-    string Message
+    string Message,
+    int PipelineTotal = 0,
+    int PickDone = 0,
+    int PackDone = 0,
+    int CheckInDone = 0
 );
 
 public record PreviewCheckInItem(
