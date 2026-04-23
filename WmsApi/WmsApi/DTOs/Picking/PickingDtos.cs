@@ -108,3 +108,28 @@ public record TestOrderItem(
     string PartId,
     int Qty
 );
+
+public record CreatePickOrderRequest(
+    string OperatorId,
+    List<CreatePickOrderItem> Items
+);
+
+public record CreatePickOrderItem(
+    string PartId,
+    int Qty
+);
+
+public record CreatePickOrderResponse(
+    string PickOrderId,
+    int TotalRequired,
+    int TotalAllocated,
+    List<PickOrderDetailAllocation> Details,
+    string Message
+);
+
+public record PickOrderDetailAllocation(
+    string PartId,
+    int RequiredQty,
+    int AllocatedQty,
+    int ShortageQty
+);

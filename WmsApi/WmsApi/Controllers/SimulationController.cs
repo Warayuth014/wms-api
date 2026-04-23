@@ -5,6 +5,7 @@ using WmsApi.Data;
 using WmsApi.DTOs;
 using WmsApi.Hubs;
 using WmsApi.Models;
+using WmsApi.Services.Picking;
 
 namespace WmsApi.Controllers;
 
@@ -14,7 +15,10 @@ namespace WmsApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/simulate")]
-public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) : ControllerBase
+public class SimulationController(
+    WmsDbContext db,
+    IHubContext<PutawayHub> hub,
+    IPickingService pickingService) : ControllerBase
 {
     // ─────────────────────────────────────────────
     //  AGV — จำลองรถขนอัตโนมัติ
@@ -77,8 +81,29 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
 
         await db.SaveChangesAsync();
 
+        // ── Auto-allocate เมื่อ pallet เข้า ASRS (STORED) ──
+        var allocatedInfo = new List<string>();
+        if (dest == "ASRS" && pallet.Status == "STORED")
+        {
+            var partIds = await db.ReceiptLines
+                .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
+                .Select(l => l.PartId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var pid in partIds)
+            {
+                var (_, qty) = await pickingService.AllocatePendingForPartAsync(pid);
+                if (qty > 0) allocatedInfo.Add($"{pid}×{qty}");
+            }
+        }
+
+        var allocMsg = allocatedInfo.Count > 0
+            ? $" | Auto-allocated: {string.Join(", ", allocatedInfo)}"
+            : "";
+
         return Ok(new ApiSuccess(true,
-            $"🤖 AGV ส่ง Pallet '{req.PalletId}' ถึง {dest} แล้ว (สถานะ: {pallet.Status})"));
+            $"🤖 AGV ส่ง Pallet '{req.PalletId}' ถึง {dest} แล้ว (สถานะ: {pallet.Status}){allocMsg}"));
     }
 
     // ─────────────────────────────────────────────
@@ -176,6 +201,24 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
 
         await db.SaveChangesAsync();
 
+        // ── Auto-allocate: pallet นี้เข้า ASRS (STORED) แล้ว ──
+        // ให้เติม PickOrderSub ให้ PickOrder ที่ยัง allocate ไม่ครบของ part เหล่านี้
+        var allocatedInfo = new List<string>();
+        if (dest == "ASRS" && pallet.Status == "STORED")
+        {
+            var partIds = await db.ReceiptLines
+                .Where(l => l.PalletId == palletId && l.Status == "PALLETIZED")
+                .Select(l => l.PartId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var pid in partIds)
+            {
+                var (subs, qty) = await pickingService.AllocatePendingForPartAsync(pid);
+                if (qty > 0) allocatedInfo.Add($"{pid}×{qty}");
+            }
+        }
+
         // ── SignalR: broadcast pallet arrived ──
         await hub.Clients.All.SendAsync("PalletArrived", new
         {
@@ -184,8 +227,12 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
             destination = dest,
         });
 
+        var allocMsg = allocatedInfo.Count > 0
+            ? $" | Auto-allocated: {string.Join(", ", allocatedInfo)}"
+            : "";
+
         return Ok(new ApiSuccess(true,
-            $"📦 Pallet '{palletId}' ถึงปลายทาง {pallet.Location} แล้ว (Status: {pallet.Status})"));
+            $"📦 Pallet '{palletId}' ถึงปลายทาง {pallet.Location} แล้ว (Status: {pallet.Status}){allocMsg}"));
     }
 
     /// <summary>
@@ -255,8 +302,29 @@ public class SimulationController(WmsDbContext db, IHubContext<PutawayHub> hub) 
 
         await db.SaveChangesAsync();
 
+        // ── Auto-allocate เมื่อ pallet กลับ ASRS แล้วยังมีของ (STORED) ──
+        var allocatedInfo = new List<string>();
+        if (dest == "ASRS" && pallet.Status == "STORED")
+        {
+            var partIds = await db.ReceiptLines
+                .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
+                .Select(l => l.PartId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var pid in partIds)
+            {
+                var (_, qty) = await pickingService.AllocatePendingForPartAsync(pid);
+                if (qty > 0) allocatedInfo.Add($"{pid}×{qty}");
+            }
+        }
+
+        var allocMsg = allocatedInfo.Count > 0
+            ? $" | Auto-allocated: {string.Join(", ", allocatedInfo)}"
+            : "";
+
         return Ok(new ApiSuccess(true,
-            $"📦 Pallet '{req.PalletId}' ส่งกลับ {dest} เรียบร้อย (Status: {pallet.Status})"));
+            $"📦 Pallet '{req.PalletId}' ส่งกลับ {dest} เรียบร้อย (Status: {pallet.Status}){allocMsg}"));
     }
 
     // ─────────────────────────────────────────────

@@ -21,20 +21,28 @@ public record CheckInSlotDetail(
     string SlotId,
     string Owner,
     string Status,
-    string? TrackingId,
     DateTime CreatedAt,
     DateTime? CompletedAt,
     int CartonsInSlot,
     int ExpectedCartons,
     bool IsReadyToComplete,
-    List<CheckInCartonItem> Cartons
+    List<CheckInCartonItem> Cartons,
+    string? CustomerOrderId = null,
+    int PickTotal = 0,
+    int PickCurrent = 0,
+    int PackTotal = 0,
+    int PackCurrent = 0,
+    int CheckInTotal = 0,
+    int CheckInCurrent = 0
 );
 
 public record CheckInCartonItem(
     string PackingId,
-    string PalletId,
+    string? TrackingId,
     string Status,
-    DateTime ScannedAt
+    DateTime ScannedAt,
+    int ItemCount,
+    int OrderCount
 );
 
 // ── List active slots ──────────────────────────────────
@@ -56,10 +64,15 @@ public record CompleteCheckInRequest(
 public record CompleteCheckInResponse(
     string SlotId,
     string Owner,
-    string TrackingId,
+    List<PackTrackingItem> Trackings,
     DateTime CompletedAt,
     int CartonsCount,
     string Message
+);
+
+public record PackTrackingItem(
+    string PackingId,
+    string? TrackingId
 );
 
 // ── Dispatch (move to shipping) ──────────────────────────────

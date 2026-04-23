@@ -239,6 +239,10 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         await db.SaveChangesAsync();
 
+        // ── Generate Serial Numbers ──
+        await GenerateSerialsAsync(req.PartId, req.QtyReceived, line.LineId, null);
+        await db.SaveChangesAsync();
+
         return ServiceResult.Ok(new ScanReceiptPartResponse(
             LineId: line.LineId,
             PartId: poItem.PartId,
@@ -409,6 +413,18 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             line.PalletId = req.PalletId;
             line.Status = "PALLETIZED";
             line.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // ── Update serial PalletId for these lines ──
+        var lineIds = lines.Select(l => (int?)l.LineId).ToList();
+        var serialsToUpdate = await db.PartSerials
+            .Where(s => s.ReceiptLineId != null && lineIds.Contains(s.ReceiptLineId))
+            .ToListAsync();
+        var nowTs = DateTime.UtcNow;
+        foreach (var s in serialsToUpdate)
+        {
+            s.PalletId = req.PalletId;
+            s.UpdatedAt = nowTs;
         }
 
         pallet.UpdatedAt = DateTime.UtcNow;
@@ -593,4 +609,29 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             POItemStatus: poItem?.Status ?? "PENDING",
             Message: message
         );
+
+    // ── Generate N serial numbers for a part ──
+    private async Task GenerateSerialsAsync(string partId, int qty, int? receiptLineId, string? palletId)
+    {
+        if (qty <= 0) return;
+
+        var lastSeq = await db.PartSerials
+            .Where(s => s.PartId == partId)
+            .CountAsync();
+
+        var now = DateTime.UtcNow;
+        for (int i = 1; i <= qty; i++)
+        {
+            db.PartSerials.Add(new PartSerial
+            {
+                PartId = partId,
+                SerialNo = $"SN-{partId}-{(lastSeq + i):D6}",
+                ReceiptLineId = receiptLineId,
+                PalletId = palletId,
+                Status = "STORED",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+    }
 }

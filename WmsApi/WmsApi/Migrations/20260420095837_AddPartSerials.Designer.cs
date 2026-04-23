@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WmsApi.Data;
 
@@ -11,9 +12,11 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    partial class WmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260420095837_AddPartSerials")]
+    partial class AddPartSerials
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -212,9 +215,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("CustomerOrderId")
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("Owner")
                         .IsRequired()
                         .HasColumnType("nvarchar(100)");
@@ -225,39 +225,13 @@ namespace WmsApi.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TrackingId")
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("SlotId");
 
-                    b.HasIndex("CustomerOrderId");
-
                     b.ToTable("CheckInSlots", "packing");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.CustomerOrder", b =>
-                {
-                    b.Property<string>("CustomerOrderId")
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Owner")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime?>("ShippedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("CustomerOrderId");
-
-                    b.ToTable("CustomerOrders", "customer");
                 });
 
             modelBuilder.Entity("WmsApi.Models.POItem", b =>
@@ -321,10 +295,6 @@ namespace WmsApi.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Owner")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
 
@@ -551,9 +521,6 @@ namespace WmsApi.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("CustomerOrderId")
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -561,8 +528,6 @@ namespace WmsApi.Migrations
                     b.HasKey("PickOrderId");
 
                     b.HasIndex("CreatedBy");
-
-                    b.HasIndex("CustomerOrderId");
 
                     b.ToTable("PickOrders", "picking");
                 });
@@ -1188,16 +1153,6 @@ namespace WmsApi.Migrations
                     b.Navigation("Slot");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.CheckInSlot", b =>
-                {
-                    b.HasOne("WmsApi.Models.CustomerOrder", "CustomerOrder")
-                        .WithMany()
-                        .HasForeignKey("CustomerOrderId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("CustomerOrder");
-                });
-
             modelBuilder.Entity("WmsApi.Models.POItem", b =>
                 {
                     b.HasOne("WmsApi.Models.PurchaseOrder", "PurchaseOrder")
@@ -1298,14 +1253,7 @@ namespace WmsApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("WmsApi.Models.CustomerOrder", "CustomerOrder")
-                        .WithMany("PickOrders")
-                        .HasForeignKey("CustomerOrderId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.Navigation("Creator");
-
-                    b.Navigation("CustomerOrder");
                 });
 
             modelBuilder.Entity("WmsApi.Models.PickOrderDetail", b =>
@@ -1566,11 +1514,6 @@ namespace WmsApi.Migrations
             modelBuilder.Entity("WmsApi.Models.CheckInSlot", b =>
                 {
                     b.Navigation("Entries");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.CustomerOrder", b =>
-                {
-                    b.Navigation("PickOrders");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Packing", b =>

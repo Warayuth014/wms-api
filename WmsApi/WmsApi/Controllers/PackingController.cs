@@ -28,8 +28,4 @@ public class PackingController(IPackingService service) : ControllerBase
     [HttpPost("confirm-pack")]
     public async Task<IActionResult> ConfirmPack([FromBody] ConfirmPackRequest req) =>
         this.ToActionResult(await service.ConfirmPackAsync(req));
-
-    [HttpPost("split-pack")]
-    public async Task<IActionResult> SplitPack([FromBody] SplitPackRequest req) =>
-        this.ToActionResult(await service.SplitPackAsync(req));
 }

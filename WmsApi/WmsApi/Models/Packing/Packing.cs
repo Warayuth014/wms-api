@@ -13,6 +13,9 @@ public class Packing
     [Column(TypeName = "nvarchar(50)")]
     public string PalletId { get; set; } = string.Empty;
 
+    [Column(TypeName = "nvarchar(50)")]
+    public string Owner { get; set; } = string.Empty;
+
     public string Status { get; set; } = "OPEN"; // OPEN | DONE
 
     [Column(TypeName = "nvarchar(50)")]

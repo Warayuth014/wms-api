@@ -15,11 +15,17 @@ public class PickOrder
     [Column(TypeName = "nvarchar(50)")]
     public string CreatedBy { get; set; } = string.Empty;
 
+    [Column(TypeName = "nvarchar(50)")]
+    public string? CustomerOrderId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
 
     [ForeignKey(nameof(CreatedBy))]
     public User? Creator { get; set; }
+
+    [ForeignKey(nameof(CustomerOrderId))]
+    public CustomerOrder? CustomerOrder { get; set; }
 
     public ICollection<PickOrderDetail> Details { get; set; } = [];
 }

@@ -41,7 +41,10 @@ public record PackingOrderResponse(
     string PackingId,
     string PickOrderId,
     string Status,
-    List<PackingPartItem> Parts
+    List<PackingPartItem> Parts,
+    bool PackFinalized = false,
+    string? TrackingId = null,
+    bool PalletReleased = false
 );
 
 public record PackingPartItem(
@@ -51,7 +54,8 @@ public record PackingPartItem(
     string ItemDesc,
     string? ImageUrl,
     int RequiredQty,
-    int ScannedQty
+    int ScannedQty,
+    List<string> AvailableSerials
 );
 
 // ── Scan / Confirm ──────────────────────────────────
@@ -60,7 +64,8 @@ public record ScanPackPartRequest(
     string PickOrderId,
     string PartId,
     int Qty,
-    string OperatorId
+    string OperatorId,
+    List<string>? SerialNumbers = null
 );
 
 public record ConfirmPackRequest(
@@ -77,16 +82,3 @@ public record ConfirmPackResponse(
     string Message
 );
 
-// ── Split Pack ──────────────────────────────────
-public record SplitPackRequest(
-    string PackingId,
-    string OperatorId
-);
-
-public record SplitPackResponse(
-    string ClosedPackingId,
-    string NewPackingId,
-    int ItemsInClosedPack,
-    int RemainingItems,
-    string Message
-);

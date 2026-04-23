@@ -12,5 +12,9 @@ public interface IPickingService
     Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req);
     Task<ServiceResult> GetAvailableLinesAsync();
     Task<ServiceResult> CreateTestOrderAsync(CreateTestOrderRequest req);
+    Task<ServiceResult> CreatePickOrderAsync(CreatePickOrderRequest req);
     Task<ServiceResult> SendToPackAsync(string palletId);
+
+    // Auto-allocate — เรียกจาก ASRS/PO receipt flow เพื่อเติม Sub ให้ PickOrder ที่ขาด
+    Task<(int allocationsCreated, int qtyAllocated)> AllocatePendingForPartAsync(string partId);
 }

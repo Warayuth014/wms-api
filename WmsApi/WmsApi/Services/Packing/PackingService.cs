@@ -25,14 +25,14 @@ public class PackingService(WmsDbContext db) : IPackingService
                     : $"Pallet '{pid}' ไม่พร้อม Pack (สถานะ: {pallet.Status})"));
 
         var packs = await db.Packings
-            .Where(p => p.PalletId == pid)
+            .Where(p => p.PalletId == pid && p.Status == "OPEN")
             .Include(p => p.Details)
             .OrderBy(p => p.CreatedAt)
             .ToListAsync();
 
         if (packs.Count == 0)
             return ServiceResult.BadRequest(new ApiError(
-                $"Pallet '{pid}' ยังไม่มี Packing"));
+                $"Pallet '{pid}' ไม่มี Pack ที่ยังเปิดอยู่"));
 
         var summaries = packs.Select(p => new PackingSummary(
             PackingId: p.PackingId,
@@ -169,10 +169,11 @@ public class PackingService(WmsDbContext db) : IPackingService
             .ToListAsync();
 
         // สแกนข้ามกล่อง: นับที่สแกนไปแล้วใน Pack อื่นของ Pallet เดียวกัน + Order เดียวกัน
+        // Pack ที่ "ปิดแล้ว" = DONE / STAGED / SHIPPED
         var siblingPackIds = await db.Packings
             .Where(p => p.PalletId == pack.PalletId
                      && p.PackingId != packingId
-                     && p.Status == "DONE")
+                     && p.Status != "OPEN")
             .Select(p => p.PackingId)
             .ToListAsync();
 
@@ -184,17 +185,29 @@ public class PackingService(WmsDbContext db) : IPackingService
                 .ToListAsync()
             : [];
 
+        // ดึง serials ที่พร้อม pack บน Pallet นี้ (ยังไม่โดน pack/ship) group ตาม PartId
+        var availableSerials = await db.PartSerials
+            .Where(s => s.PalletId == pack.PalletId
+                     && s.Status != "PACKED"
+                     && s.Status != "SHIPPED")
+            .OrderBy(s => s.SerialNo)
+            .GroupBy(s => s.PartId)
+            .Select(g => new { PartId = g.Key, Serials = g.Select(x => x.SerialNo).ToList() })
+            .ToListAsync();
+
         var items = orderDetails.Select(d =>
         {
-            // ใช้ ReservedQty จาก PickOrderDetail (จำนวนที่ pick สำเร็จจริง)
-            var totalQty = d.ReservedQty > 0
-                ? d.ReservedQty
-                : palletQtyPerPart.FirstOrDefault(p => p.PartId == d.PartId)?.Qty ?? 0;
+            // ใช้จำนวนที่อยู่บน Pallet นี้จริง (ReceiptLines ปลายทาง) เป็นหลัก
+            // เพราะ Order เดียวอาจถูก Pick แยกไปหลาย Pallet ปลายทาง
+            var totalQty = palletQtyPerPart.FirstOrDefault(p => p.PartId == d.PartId)?.Qty ?? 0;
 
             // หักจำนวนที่ Pack ไปแล้วในกล่องก่อนหน้า
             var packedInOthers = scannedInOtherPacks
                 .FirstOrDefault(s => s.PartId == d.PartId)?.Total ?? 0;
             var remainingQty = totalQty - packedInOthers;
+
+            var serials = availableSerials
+                .FirstOrDefault(s => s.PartId == d.PartId)?.Serials ?? new List<string>();
 
             return new PackingPartItem(
                 PartId: d.PartId,
@@ -203,7 +216,8 @@ public class PackingService(WmsDbContext db) : IPackingService
                 ItemDesc: d.Part?.ItemDesc ?? string.Empty,
                 ImageUrl: d.Part?.ImageUrl,
                 RequiredQty: remainingQty,
-                ScannedQty: scans.FirstOrDefault(s => s.PartId == d.PartId)?.Total ?? 0
+                ScannedQty: scans.FirstOrDefault(s => s.PartId == d.PartId)?.Total ?? 0,
+                AvailableSerials: serials
             );
         }).Where(i => i.RequiredQty > 0).ToList();
 
@@ -269,10 +283,11 @@ public class PackingService(WmsDbContext db) : IPackingService
             .SumAsync(s => (int?)s.ScannedQty) ?? 0;
 
         // นับที่ Pack ไปแล้วในกล่องก่อนหน้า (Order เดียวกัน, Pallet เดียวกัน)
+        // Pack ที่ "ปิดแล้ว" = DONE / STAGED / SHIPPED
         var otherPackIds = await db.Packings
             .Where(p => p.PalletId == pack.PalletId
                      && p.PackingId != req.PackingId
-                     && p.Status == "DONE")
+                     && p.Status != "OPEN")
             .Select(p => p.PackingId)
             .ToListAsync();
 
@@ -300,11 +315,68 @@ public class PackingService(WmsDbContext db) : IPackingService
             ScannedAt = DateTime.UtcNow,
         });
 
-        // เช็คว่า Part ทุกตัวใน Order นี้สแกนครบหรือยัง (นับข้ามกล่อง)
-        var orderParts = await db.PickOrderDetails
-            .Where(d => d.PickOrderId == req.PickOrderId && d.ReservedQty > 0)
-            .Select(d => new { d.PartId, Qty = d.ReservedQty })
+        // ── Bind Serial Numbers (if provided) ──
+        if (req.SerialNumbers is { Count: > 0 })
+        {
+            if (req.SerialNumbers.Count != req.Qty)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"จำนวน S/N ({req.SerialNumbers.Count}) ไม่ตรงกับ Qty ({req.Qty})"));
+
+            if (req.SerialNumbers.Distinct().Count() != req.SerialNumbers.Count)
+                return ServiceResult.BadRequest(new ApiError("S/N ซ้ำกันในคำขอ"));
+
+            var serials = await db.PartSerials
+                .Where(s => s.PartId == req.PartId
+                         && req.SerialNumbers.Contains(s.SerialNo))
+                .ToListAsync();
+
+            if (serials.Count != req.SerialNumbers.Count)
+            {
+                var foundSet = serials.Select(s => s.SerialNo).ToHashSet();
+                var missing = req.SerialNumbers.Where(sn => !foundSet.Contains(sn)).ToList();
+                return ServiceResult.BadRequest(new ApiError(
+                    $"ไม่พบ S/N: {string.Join(", ", missing)}"));
+            }
+
+            var alreadyPacked = serials.Where(s => s.Status == "PACKED" || s.Status == "SHIPPED").ToList();
+            if (alreadyPacked.Count > 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ถูก pack ไปแล้ว: {string.Join(", ", alreadyPacked.Select(s => s.SerialNo))}"));
+
+            var wrongPallet = serials.Where(s => s.PalletId != pack.PalletId).ToList();
+            if (wrongPallet.Count > 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ไม่ได้อยู่บน Pallet '{pack.PalletId}': {string.Join(", ", wrongPallet.Select(s => s.SerialNo))}"));
+
+            var now = DateTime.UtcNow;
+            foreach (var s in serials)
+            {
+                s.Status = "PACKED";
+                s.PackingId = req.PackingId;
+                s.PackedAt = now;
+                s.UpdatedAt = now;
+            }
+        }
+
+        // เช็คว่า Part ที่อยู่บน Pallet นี้ (ของ Order นี้) สแกนครบหรือยัง
+        // ไม่ใช้ ReservedQty เพราะ Order อาจกระจายหลาย Pallet → Pack นี้รับผิดชอบเฉพาะของบน Pallet นี้
+        var partsOnThisPallet = await db.ReceiptLines
+            .Where(l => l.PalletId == pack.PalletId
+                     && l.Status == "PALLETIZED"
+                     && l.QtyReceived > 0)
+            .GroupBy(l => l.PartId)
+            .Select(g => new { PartId = g.Key, Qty = g.Sum(l => l.QtyReceived) })
             .ToListAsync();
+
+        // filter เอาเฉพาะ Part ที่อยู่ใน Order นี้ (intersect กับ PickOrderDetails)
+        var orderPartIds = await db.PickOrderDetails
+            .Where(d => d.PickOrderId == req.PickOrderId && d.ReservedQty > 0)
+            .Select(d => d.PartId)
+            .ToListAsync();
+
+        var requiredOnPallet = partsOnThisPallet
+            .Where(p => orderPartIds.Contains(p.PartId))
+            .ToList();
 
         // รวม scan ทุก Pack ของ Order นี้บน Pallet เดียวกัน
         var allPackIdsOnPallet = await db.Packings
@@ -323,19 +395,41 @@ public class PackingService(WmsDbContext db) : IPackingService
         }}).GroupBy(s => s.PartId)
            .ToDictionary(g => g.Key, g => g.Sum(x => x.ScannedQty));
 
-        var orderComplete = orderParts.All(p =>
+        var packComplete = requiredOnPallet.All(p =>
             simulated.GetValueOrDefault(p.PartId, 0) >= p.Qty);
 
-        if (orderComplete && detail.Status != "DONE")
+        if (packComplete && detail.Status != "DONE")
         {
             detail.Status = "DONE";
             detail.CompletedAt = DateTime.UtcNow;
         }
 
+        // ถ้าทุก Detail ใน Pack นี้ DONE แล้ว → auto-finalize (ไม่ต้องรอกด confirm)
+        bool packFinalized = false;
+        string? finalizedTrackingId = null;
+        bool palletReleased = false;
+
+        if (pack.Details.All(d => d.Status == "DONE"))
+        {
+            (finalizedTrackingId, palletReleased, _) = await FinalizePackInternalAsync(pack);
+            packFinalized = true;
+        }
+
         await db.SaveChangesAsync();
 
-        // คืนข้อมูล Order ที่อัปเดตแล้ว
-        return await GetOrderAsync(req.PackingId, req.PickOrderId);
+        // คืนข้อมูล Order ที่อัปเดตแล้ว + finalize info (ถ้า Pack เพิ่งปิด)
+        var orderResult = await GetOrderAsync(req.PackingId, req.PickOrderId);
+        if (packFinalized && orderResult.StatusCode == 200 && orderResult.Payload is PackingOrderResponse baseResp)
+        {
+            return ServiceResult.Ok(baseResp with
+            {
+                PackFinalized = true,
+                TrackingId = finalizedTrackingId,
+                PalletReleased = palletReleased,
+            });
+        }
+
+        return orderResult;
     }
 
     public async Task<ServiceResult> ConfirmPackAsync(ConfirmPackRequest req)
@@ -359,47 +453,7 @@ public class PackingService(WmsDbContext db) : IPackingService
             return ServiceResult.BadRequest(new ApiError(
                 "ยัง pack ไม่ครบทุก Order ใน Pack นี้"));
 
-        var trackingId = $"TRK-{DateTime.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
-        var completedAt = DateTime.UtcNow;
-
-        pack.Status = "DONE";
-        pack.CompletedAt = completedAt;
-        pack.TrackingId = trackingId;
-
-        // เช็คว่า Pallet นี้มี Pack ค้างอยู่อีกไหม → ถ้าหมดแล้ว Pallet เปล่า → AVAILABLE
-        bool palletReleased = false;
-        var siblingPacksOpen = await db.Packings
-            .Where(p => p.PalletId == pack.PalletId
-                     && p.PackingId != pack.PackingId
-                     && p.Status != "DONE")
-            .AnyAsync();
-
-        if (!siblingPacksOpen)
-        {
-            var pallet = await db.Pallets.FindAsync(pack.PalletId);
-            if (pallet != null)
-            {
-                // ของออกจาก Pallet ไปอยู่ในกล่องหมดแล้ว → Pallet เปล่าพร้อมใช้ใหม่
-                pallet.Status = "AVAILABLE";
-                pallet.Location = null;
-                pallet.Type = null;
-                pallet.TrackingId = null;
-                pallet.UpdatedAt = completedAt;
-                palletReleased = true;
-
-                // เคลียร์ ReceiptLines เก่า → PACKED เพื่อให้ Pallet รับของใหม่ได้
-                var oldLines = await db.ReceiptLines
-                    .Where(l => l.PalletId == pack.PalletId && l.Status == "PALLETIZED")
-                    .ToListAsync();
-
-                foreach (var line in oldLines)
-                {
-                    line.Status = "PACKED";
-                    line.UpdatedAt = completedAt;
-                }
-            }
-        }
-
+        var (trackingId, palletReleased, completedAt) = await FinalizePackInternalAsync(pack);
         await db.SaveChangesAsync();
 
         return ServiceResult.Ok(new ConfirmPackResponse(
@@ -414,126 +468,50 @@ public class PackingService(WmsDbContext db) : IPackingService
         ));
     }
 
-    public async Task<ServiceResult> SplitPackAsync(SplitPackRequest req)
+    // Finalize = Pack → DONE + gen TrackingId + release Pallet ถ้าหมด
+    // ไม่เรียก SaveChanges — ให้ caller จัดการ
+    private async Task<(string trackingId, bool palletReleased, DateTime completedAt)>
+        FinalizePackInternalAsync(Models.Packing pack)
     {
-        if (string.IsNullOrWhiteSpace(req.PackingId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Packing ID"));
-        if (string.IsNullOrWhiteSpace(req.OperatorId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Operator ID"));
+        var trackingId = $"TRK-{DateTime.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
+        var completedAt = DateTime.UtcNow;
 
-        var pack = await db.Packings
-            .Include(p => p.Details)
-            .FirstOrDefaultAsync(p => p.PackingId == req.PackingId);
-
-        if (pack is null)
-            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pack '{req.PackingId}'"));
-
-        if (pack.Status != "OPEN")
-            return ServiceResult.BadRequest(new ApiError("Pack นี้ปิดแล้ว ไม่สามารถแบ่งกล่องได้"));
-
-        // ต้องมีของสแกนอย่างน้อย 1 ชิ้นในกล่องนี้
-        var scannedInThisPack = await db.PackingPartScans
-            .Where(s => s.PackingId == req.PackingId)
-            .SumAsync(s => (int?)s.ScannedQty) ?? 0;
-
-        if (scannedInThisPack == 0)
-            return ServiceResult.BadRequest(new ApiError("ยังไม่ได้สแกนของใส่กล่องนี้เลย"));
-
-        // เช็คว่ายังมีของเหลืออีกไหม
-        var orderIds = pack.Details.Select(d => d.PickOrderId).ToList();
-        var requiredParts = await db.PickOrderDetails
-            .Where(d => orderIds.Contains(d.PickOrderId) && d.ReservedQty > 0)
-            .Select(d => new { d.PickOrderId, d.PartId, d.ReservedQty })
-            .ToListAsync();
-
-        // รวม scan ทุก Pack ของ Pallet นี้
-        var allPackIds = await db.Packings
-            .Where(p => p.PalletId == pack.PalletId)
-            .Select(p => p.PackingId)
-            .ToListAsync();
-
-        var totalScanned = await db.PackingPartScans
-            .Where(s => allPackIds.Contains(s.PackingId)
-                     && orderIds.Contains(s.PickOrderId))
-            .GroupBy(s => new { s.PickOrderId, s.PartId })
-            .Select(g => new { g.Key.PickOrderId, g.Key.PartId, Total = g.Sum(x => x.ScannedQty) })
-            .ToListAsync();
-
-        var totalRequired = requiredParts.Sum(p => p.ReservedQty);
-        var totalDone = totalScanned.Sum(s => s.Total);
-        var remaining = totalRequired - totalDone;
-
-        if (remaining <= 0)
-            return ServiceResult.BadRequest(new ApiError("ของครบแล้ว ไม่ต้องแบ่งกล่อง"));
-
-        // ── ปิดกล่องปัจจุบัน ──
-        var now = DateTime.UtcNow;
         pack.Status = "DONE";
-        pack.CompletedAt = now;
+        pack.CompletedAt = completedAt;
+        pack.TrackingId = trackingId;
 
-        // Mark PackingDetails as DONE (เฉพาะ Order ที่ Part ครบข้ามกล่องแล้ว)
-        foreach (var detail in pack.Details)
+        var siblingPacksOpen = await db.Packings
+            .Where(p => p.PalletId == pack.PalletId
+                     && p.PackingId != pack.PackingId
+                     && p.Status == "OPEN")
+            .AnyAsync();
+
+        bool palletReleased = false;
+        if (!siblingPacksOpen)
         {
-            // เช็คว่า Order นี้ Part ครบทุกตัวรึยัง (นับข้ามกล่อง)
-            var partsForOrder = requiredParts.Where(p => p.PickOrderId == detail.PickOrderId).ToList();
-            var allDone = partsForOrder.All(p =>
+            var pallet = await db.Pallets.FindAsync(pack.PalletId);
+            if (pallet != null)
             {
-                var scanned = totalScanned
-                    .FirstOrDefault(s => s.PickOrderId == p.PickOrderId && s.PartId == p.PartId)?.Total ?? 0;
-                return scanned >= p.ReservedQty;
-            });
+                pallet.Status = "AVAILABLE";
+                pallet.Location = null;
+                pallet.Type = null;
+                pallet.TrackingId = null;
+                pallet.UpdatedAt = completedAt;
+                palletReleased = true;
 
-            detail.Status = "DONE";
-            detail.CompletedAt = now;
-        }
+                var oldLines = await db.ReceiptLines
+                    .Where(l => l.PalletId == pack.PalletId && l.Status == "PALLETIZED")
+                    .ToListAsync();
 
-        // ── สร้างกล่องใหม่ ──
-        var beYear = now.Year + 543;
-        var prefix = $"PK-{now:ddMM}{beYear}";
-        var todayCount = await db.Packings.CountAsync(p => p.PackingId.StartsWith(prefix));
-        var newPackingId = $"{prefix}-{(todayCount + 1):D3}";
-
-        var newPack = new Models.Packing
-        {
-            PackingId = newPackingId,
-            PalletId = pack.PalletId,
-            PickOrderId = pack.PickOrderId,
-            Status = "OPEN",
-            CreatedBy = req.OperatorId,
-            CreatedAt = now,
-        };
-        db.Packings.Add(newPack);
-
-        // เพิ่ม PackingDetail สำหรับ Order ที่ยังมีของเหลือ
-        foreach (var detail in pack.Details)
-        {
-            var partsForOrder = requiredParts.Where(p => p.PickOrderId == detail.PickOrderId).ToList();
-            var hasRemaining = partsForOrder.Any(p =>
-            {
-                var scanned = totalScanned
-                    .FirstOrDefault(s => s.PickOrderId == p.PickOrderId && s.PartId == p.PartId)?.Total ?? 0;
-                return scanned < p.ReservedQty;
-            });
-
-            if (hasRemaining)
-            {
-                db.PackingDetails.Add(new PackingDetail
+                foreach (var line in oldLines)
                 {
-                    PackingId = newPackingId,
-                    PickOrderId = detail.PickOrderId,
-                    Status = "PENDING",
-                });
+                    line.Status = "PACKED";
+                    line.UpdatedAt = completedAt;
+                }
             }
         }
 
-        await db.SaveChangesAsync();
-
-        return ServiceResult.Ok(new SplitPackResponse(
-            ClosedPackingId: pack.PackingId,
-            NewPackingId: newPackingId,
-            ItemsInClosedPack: scannedInThisPack,
-            RemainingItems: remaining,
-            Message: $"ปิดกล่อง {pack.PackingId} ({scannedInThisPack} ชิ้น) → เปิดกล่องใหม่ {newPackingId} (เหลือ {remaining} ชิ้น)"
-        ));
+        return (trackingId, palletReleased, completedAt);
     }
+
 }

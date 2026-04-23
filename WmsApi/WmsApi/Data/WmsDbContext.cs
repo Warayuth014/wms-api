@@ -9,6 +9,7 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<User> Users { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Part> Parts { get; set; }
+    public DbSet<PartSerial> PartSerials { get; set; }
 
     // receiving
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
@@ -47,6 +48,9 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     // audit
     public DbSet<CancelLog> CancelLogs { get; set; }
 
+    // customer
+    public DbSet<CustomerOrder> CustomerOrders { get; set; }
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.ApplyConfigurationsFromAssembly(typeof(WmsDbContext).Assembly);
@@ -80,6 +84,42 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
         mb.Entity<CheckInEntry>()
             .HasIndex(e => e.PackingId)
             .IsUnique();
+
+        // PartSerial: unique (PartId, SerialNo)
+        mb.Entity<PartSerial>()
+            .HasIndex(s => new { s.PartId, s.SerialNo })
+            .IsUnique();
+
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.Packing)
+            .WithMany()
+            .HasForeignKey(s => s.PackingId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.Pallet)
+            .WithMany()
+            .HasForeignKey(s => s.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.ReceiptLine)
+            .WithMany()
+            .HasForeignKey(s => s.ReceiptLineId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // CustomerOrder relationships (nullable FKs, prevent cascade issues)
+        mb.Entity<PickOrder>()
+            .HasOne(p => p.CustomerOrder)
+            .WithMany(c => c.PickOrders)
+            .HasForeignKey(p => p.CustomerOrderId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<CheckInSlot>()
+            .HasOne(s => s.CustomerOrder)
+            .WithMany()
+            .HasForeignKey(s => s.CustomerOrderId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         // Basket: ป้องกัน multiple cascade paths
         mb.Entity<BasketLine>()
