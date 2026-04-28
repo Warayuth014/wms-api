@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WmsApi.Data;
 
@@ -11,9 +12,11 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    partial class WmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260424044138_AddSortingPallet")]
+    partial class AddSortingPallet
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -939,44 +942,6 @@ namespace WmsApi.Migrations
                     b.ToTable("ShipXQueue", "putaway");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.SortingBatchQueue", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime?>("AssignedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AssignedPalletId")
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PackingIdsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("QueuedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AssignedPalletId");
-
-                    b.HasIndex("Status", "QueuedAt");
-
-                    b.ToTable("SortingBatchQueues", "sorting");
-                });
-
             modelBuilder.Entity("WmsApi.Models.SortingPallet", b =>
                 {
                     b.Property<string>("PalletId")
@@ -1001,9 +966,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime?>("SealedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("StationId")
-                        .HasColumnType("int");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(20)");
@@ -1011,161 +973,6 @@ namespace WmsApi.Migrations
                     b.HasKey("PalletId");
 
                     b.ToTable("SortingPallets", "sorting");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortingPalletPack", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("PackingId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PalletId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime?>("ProcessedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("ScheduledAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("SequenceNo")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PackingId");
-
-                    b.HasIndex("PalletId");
-
-                    b.HasIndex("Status", "ScheduledAt");
-
-                    b.ToTable("SortingPalletPacks", "sorting");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortingStation", b =>
-                {
-                    b.Property<int>("StationId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("StationId"));
-
-                    b.Property<string>("CurrentPalletId")
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("DisableReason")
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("DisabledAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DisabledBy")
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("bit");
-
-                    b.HasKey("StationId");
-
-                    b.HasIndex("CurrentPalletId");
-
-                    b.ToTable("SortingStations", "sorting");
-
-                    b.HasData(
-                        new
-                        {
-                            StationId = 1,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 2,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 3,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 4,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 5,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 6,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 7,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 8,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 9,
-                            Enabled = true
-                        },
-                        new
-                        {
-                            StationId = 10,
-                            Enabled = true
-                        });
-                });
-
-            modelBuilder.Entity("WmsApi.Models.StationAuditLog", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime>("At")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("OperatorId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PalletId")
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Reason")
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<int>("StationId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("StationAuditLogs", "sorting");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Supplier", b =>
@@ -1730,45 +1537,6 @@ namespace WmsApi.Migrations
                     b.Navigation("Pallet");
 
                     b.Navigation("PutawaySession");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortingBatchQueue", b =>
-                {
-                    b.HasOne("WmsApi.Models.SortingPallet", "AssignedPallet")
-                        .WithMany()
-                        .HasForeignKey("AssignedPalletId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("AssignedPallet");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortingPalletPack", b =>
-                {
-                    b.HasOne("WmsApi.Models.Packing", "Packing")
-                        .WithMany()
-                        .HasForeignKey("PackingId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("WmsApi.Models.SortingPallet", "Pallet")
-                        .WithMany()
-                        .HasForeignKey("PalletId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Packing");
-
-                    b.Navigation("Pallet");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortingStation", b =>
-                {
-                    b.HasOne("WmsApi.Models.SortingPallet", "CurrentPallet")
-                        .WithMany()
-                        .HasForeignKey("CurrentPalletId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("CurrentPallet");
                 });
 
             modelBuilder.Entity("WmsApi.Models.UnloadLine", b =>

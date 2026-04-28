@@ -41,6 +41,13 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     public DbSet<CheckInSlot> CheckInSlots { get; set; }
     public DbSet<CheckInEntry> CheckInEntries { get; set; }
 
+    // sorting
+    public DbSet<SortingPallet>     SortingPallets    { get; set; }
+    public DbSet<SortingStation>    SortingStations   { get; set; }
+    public DbSet<SortingPalletPack> SortingPalletPacks { get; set; }
+    public DbSet<SortingBatchQueue> SortingBatchQueues { get; set; }
+    public DbSet<StationAuditLog>   StationAuditLogs  { get; set; }
+
     // basket
     public DbSet<Basket> Baskets { get; set; }
     public DbSet<BasketLine> BasketLines { get; set; }
@@ -67,6 +74,52 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .WithMany()
             .HasForeignKey(p => p.PalletId)
             .OnDelete(DeleteBehavior.NoAction);
+
+        // Sorting: Pack → SortingPallet (nullable FK)
+        mb.Entity<Packing>()
+            .HasOne(p => p.SortingPallet)
+            .WithMany(sp => sp.Packings)
+            .HasForeignKey(p => p.SortingPalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // SortingStation: each station ↔ optional current pallet
+        mb.Entity<SortingStation>()
+            .HasOne(s => s.CurrentPallet)
+            .WithMany()
+            .HasForeignKey(s => s.CurrentPalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // SortingPalletPack: queue link
+        mb.Entity<SortingPalletPack>()
+            .HasOne(q => q.Pallet)
+            .WithMany()
+            .HasForeignKey(q => q.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<SortingPalletPack>()
+            .HasOne(q => q.Packing)
+            .WithMany()
+            .HasForeignKey(q => q.PackingId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<SortingPalletPack>()
+            .HasIndex(q => new { q.Status, q.ScheduledAt });
+
+        // SortingBatchQueue
+        mb.Entity<SortingBatchQueue>()
+            .HasOne(b => b.AssignedPallet)
+            .WithMany()
+            .HasForeignKey(b => b.AssignedPalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<SortingBatchQueue>()
+            .HasIndex(b => new { b.Status, b.QueuedAt });
+
+        // Seed 10 sorting stations (ID 1..10)
+        mb.Entity<SortingStation>().HasData(
+            Enumerable.Range(1, 10).Select(i => new SortingStation
+            {
+                StationId = i,
+                Enabled   = true,
+            }).ToArray()
+        );
 
         // CheckIn
         mb.Entity<CheckInEntry>()

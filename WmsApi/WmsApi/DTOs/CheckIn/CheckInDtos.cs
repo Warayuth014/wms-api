@@ -38,6 +38,7 @@ public record PreviewCheckInResponse(
     int PipelineTotal = 0,
     int PickDone = 0,
     int PackDone = 0,
+    int SortingDone = 0,
     int CheckInDone = 0
 );
 
@@ -64,6 +65,7 @@ public record CheckInSlotDetail(
     int PipelineTotal = 0,
     int PickDone = 0,
     int PackDone = 0,
+    int SortingDone = 0,
     int CheckInDone = 0
 );
 

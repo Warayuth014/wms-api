@@ -31,6 +31,10 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             return ServiceResult.BadRequest(new ApiError(
                 $"Pack '{packingId}' ยัง Pack ไม่เสร็จ (สถานะ: {pack.Status})"));
 
+        if (pack.Status == "DONE")
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pack '{packingId}' ยังไม่ผ่าน Sorting — ต้องสแกนที่ Sorting Station ก่อน"));
+
         // Owner + CustomerOrderId จาก PickOrder ของ Pack
         var orderIds = pack.Details.Select(d => d.PickOrderId).ToList();
         var pickOrderIds = orderIds.Distinct().OrderBy(id => id).ToList();
@@ -135,6 +139,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             PipelineTotal: progress.PipelineTotal,
             PickDone: progress.PickDone,
             PackDone: progress.PackDone,
+            SortingDone: progress.SortingDone,
             CheckInDone: progress.CheckInDone
         ));
     }
@@ -156,9 +161,9 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         if (pack is null)
             return ServiceResult.NotFound(new ApiError($"ไม่พบ Pack '{packingId}'"));
 
-        if (pack.Status != "DONE")
+        if (pack.Status != "SORTED")
             return ServiceResult.BadRequest(new ApiError(
-                $"Pack '{packingId}' ยัง Pack ไม่เสร็จ (สถานะ: {pack.Status})"));
+                $"Pack '{packingId}' ยังไม่พร้อม check-in (สถานะ: {pack.Status} — ต้องเป็น SORTED)"));
 
         // เช็คว่า Carton นี้ยัง check-in ไม่แล้ว
         var existing = await db.CheckInEntries
@@ -236,7 +241,8 @@ public class CheckInService(WmsDbContext db) : ICheckInService
 
         await db.SaveChangesAsync();
 
-        var (cartonsInSlot, expectedCartons) = await ComputeSlotProgressAsync(slot.SlotId, owner);
+        var (cartonsInSlot, expectedCartons) = await ComputeSlotProgressAsync(
+            slot.SlotId, owner, slot.CustomerOrderId);
         var isReady = cartonsInSlot >= expectedCartons && expectedCartons > 0;
 
         return ServiceResult.Ok(new ScanCheckInResponse(
@@ -290,7 +296,8 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             OrderCount: orderCounts.GetValueOrDefault(e.PackingId, 0)
         )).ToList();
 
-        var (inSlot, expected) = await ComputeSlotProgressAsync(slotId, slot.Owner);
+        var (inSlot, expected) = await ComputeSlotProgressAsync(
+            slotId, slot.Owner, slot.CustomerOrderId);
         var isReady = inSlot >= expected && expected > 0;
 
         var progress = await ComputePipelineProgressAsync(slot.CustomerOrderId, slot.Owner);
@@ -309,6 +316,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             PipelineTotal: progress.PipelineTotal,
             PickDone: progress.PickDone,
             PackDone: progress.PackDone,
+            SortingDone: progress.SortingDone,
             CheckInDone: progress.CheckInDone
         ));
     }
@@ -324,7 +332,8 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         var result = new List<CheckInSlotSummary>();
         foreach (var s in slots)
         {
-            var (inSlot, expected) = await ComputeSlotProgressAsync(s.SlotId, s.Owner);
+            var (inSlot, expected) = await ComputeSlotProgressAsync(
+                s.SlotId, s.Owner, s.CustomerOrderId);
             result.Add(new CheckInSlotSummary(
                 SlotId: s.SlotId,
                 Owner: s.Owner,
@@ -351,7 +360,8 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             return ServiceResult.BadRequest(new ApiError(
                 $"ช่อง '{req.SlotId}' ไม่อยู่ในสถานะ OPEN (สถานะ: {slot.Status})"));
 
-        var (inSlot, expected) = await ComputeSlotProgressAsync(slot.SlotId, slot.Owner);
+        var (inSlot, expected) = await ComputeSlotProgressAsync(
+            slot.SlotId, slot.Owner, slot.CustomerOrderId);
         if (inSlot < expected)
             return ServiceResult.BadRequest(new ApiError(
                 $"ยังวางกล่องไม่ครบ ({inSlot}/{expected})"));
@@ -457,7 +467,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
     ///   Pack done    = Packs ที่ Status in (DONE / STAGED / SHIPPED)
     ///   CheckIn done = Packs ที่ Status in (STAGED / SHIPPED)
     /// </summary>
-    private async Task<(int PipelineTotal, int PickDone, int PackDone, int CheckInDone)>
+    private async Task<(int PipelineTotal, int PickDone, int PackDone, int SortingDone, int CheckInDone)>
         ComputePipelineProgressAsync(string? customerOrderId, string owner)
     {
         // PickOrders ของ CustomerOrder นี้ — fallback: PickOrders ที่มี Part ของ Owner
@@ -495,34 +505,55 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             .ToListAsync();
         var pickDone = packs.Count(p => p.PickOrderId != null && completedPickOrderIds.Contains(p.PickOrderId));
 
-        var packDone = packs.Count(p => p.Status == "DONE" || p.Status == "STAGED" || p.Status == "SHIPPED");
+        // cumulative: ผ่าน stage นั้นแล้ว (รวม stage ถัดไปด้วย)
+        var packDone = packs.Count(p => p.Status == "DONE" || p.Status == "SORTED" || p.Status == "STAGED" || p.Status == "SHIPPED");
+        var sortingDone = packs.Count(p => p.Status == "SORTED" || p.Status == "STAGED" || p.Status == "SHIPPED");
         var checkInDone = packs.Count(p => p.Status == "STAGED" || p.Status == "SHIPPED");
 
-        return (pipelineTotal, pickDone, packDone, checkInDone);
+        return (pipelineTotal, pickDone, packDone, sortingDone, checkInDone);
     }
 
     /// <summary>
-    /// นับจำนวน carton ใน slot + จำนวนที่ควรมีทั้งหมดของ Owner
-    /// Expected = Pack ที่ DONE (รอ check-in) + STAGED (สแกนเข้าช่องแล้ว) ของ Owner นี้
-    /// SHIPPED จะไม่นับเพราะขึ้นรถไปแล้ว
+    /// นับจำนวน carton ใน slot + จำนวนที่ควรมีทั้งหมดของ CustomerOrder/Owner
+    /// Expected = Pack ที่ SORTED (รอ check-in อยู่บน Sorting Pallet) + STAGED (สแกนเข้าช่องแล้ว)
+    /// scope ด้วย CustomerOrderId ก่อน (แม่นยำสุด) ถ้าไม่มีค่อย fallback ไป Owner
+    /// SHIPPED ไม่นับเพราะขึ้นรถไปแล้ว
+    /// DONE ไม่นับเพราะยังไม่ผ่าน Sorting (ยังไม่พร้อมเข้า slot)
     /// </summary>
-    private async Task<(int inSlot, int expected)> ComputeSlotProgressAsync(string slotId, string owner)
+    private async Task<(int inSlot, int expected)> ComputeSlotProgressAsync(
+        string slotId, string owner, string? customerOrderId = null)
     {
         var inSlot = await db.CheckInEntries
             .CountAsync(e => e.SlotId == slotId);
 
-        var expected = await db.Packings
-            .Where(p => p.Status == "DONE" || p.Status == "STAGED")
-            .Where(p => db.PackingDetails
-                .Where(d => d.PackingId == p.PackingId)
-                .Join(db.PickOrderDetails,
-                    d => d.PickOrderId,
-                    pod => pod.PickOrderId,
-                    (d, pod) => pod.PartId)
-                .Join(db.Parts, partId => partId, pa => pa.PartId, (partId, pa) => pa.Owner)
-                .Any(o => o == owner))
-            .CountAsync();
+        var readyPacks = db.Packings
+            .Where(p => p.Status == "SORTED" || p.Status == "STAGED");
 
+        if (customerOrderId != null)
+        {
+            // scope ด้วย CustomerOrder — แม่นยำที่สุด
+            var pickOrderIds = await db.PickOrders
+                .Where(p => p.CustomerOrderId == customerOrderId)
+                .Select(p => p.PickOrderId)
+                .ToListAsync();
+            readyPacks = readyPacks
+                .Where(p => p.PickOrderId != null && pickOrderIds.Contains(p.PickOrderId));
+        }
+        else
+        {
+            // fallback: scope ด้วย Owner (สำหรับ slot เก่าที่ยังไม่มี CustomerOrderId)
+            readyPacks = readyPacks
+                .Where(p => db.PackingDetails
+                    .Where(d => d.PackingId == p.PackingId)
+                    .Join(db.PickOrderDetails,
+                        d => d.PickOrderId,
+                        pod => pod.PickOrderId,
+                        (d, pod) => pod.PartId)
+                    .Join(db.Parts, partId => partId, pa => pa.PartId, (partId, pa) => pa.Owner)
+                    .Any(o => o == owner));
+        }
+
+        var expected = await readyPacks.CountAsync();
         return (inSlot, expected);
     }
 
