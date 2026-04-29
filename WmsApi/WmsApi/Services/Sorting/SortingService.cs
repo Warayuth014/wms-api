@@ -339,7 +339,7 @@ public class SortingService(
         int stationId, List<string> packingIds, string operatorId)
     {
         var nextNo = await GetNextPalletNumberAsync();
-        var palletId = $"SP-{nextNo:D2}";
+        var palletId = $"SP-{nextNo:D3}";
         var now = DateTime.UtcNow;
 
         var pallet = new SortingPallet
@@ -387,7 +387,10 @@ public class SortingService(
 
     private async Task<int> GetNextPalletNumberAsync()
     {
-        var existing = await db.SortingPallets.Select(s => s.PalletId).ToListAsync();
+        var existing = await db.SortingPallets
+            .Where(s => s.PalletId.StartsWith("SP-"))
+            .Select(s => s.PalletId)
+            .ToListAsync();
         var usedNos = existing
             .Select(id =>
             {
