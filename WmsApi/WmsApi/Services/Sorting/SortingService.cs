@@ -15,7 +15,7 @@ public class SortingService(
 {
     private const int TickIntervalSec = 2;
 
-    // ── 1) Station grid (10 cards) ────────────────────────
+    // ── 1) Station grid (10 cards) + dashboard counters ──
     public async Task<ServiceResult> GetStationsAsync()
     {
         var stations = await db.SortingStations
@@ -23,7 +23,7 @@ public class SortingService(
             .OrderBy(s => s.StationId)
             .ToListAsync();
 
-        var result = stations.Select(s =>
+        var stationViews = stations.Select(s =>
         {
             var status = !s.Enabled
                 ? "DISABLED"
@@ -45,7 +45,19 @@ public class SortingService(
             );
         }).ToList();
 
-        return ServiceResult.Ok(result);
+        // ── Dashboard counters ──
+        // เสร็จ = batch ที่ครบ (FULL หรือ SEALED) ทั้งหมด
+        var completedCount = await db.SortingPallets
+            .CountAsync(p => p.Status == "FULL" || p.Status == "SEALED");
+        var queuedCount = await db.SortingBatchQueues
+            .CountAsync(b => b.Status == "WAITING");
+
+        return ServiceResult.Ok(new
+        {
+            stations = stationViews,
+            completedCount,
+            queuedCount,
+        });
     }
 
     // ── 2) Station detail (cartons list) ──────────────────
