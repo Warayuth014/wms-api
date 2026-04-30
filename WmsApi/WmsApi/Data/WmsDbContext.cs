@@ -1,387 +1,197 @@
-﻿using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 using WmsApi.Models;
 
 namespace WmsApi.Data;
 
 public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(options)
 {
-    // ── master ────────────────────────────────
+    // master
     public DbSet<User> Users { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<Part> Parts { get; set; }
-    public DbSet<Customer> Customers { get; set; }
+    public DbSet<PartSerial> PartSerials { get; set; }
 
-    // ── flow1 ─────────────────────────────────
+    // receiving
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<POItem> POItems { get; set; }
     public DbSet<ReceivingSession> ReceivingSessions { get; set; }
     public DbSet<ReceiptLine> ReceiptLines { get; set; }
-    public DbSet<SalesOrder> SalesOrders { get; set; }
-    public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
-    public DbSet<ReturnOrder> ReturnOrders { get; set; }
-    public DbSet<ReturnLine> ReturnLines { get; set; }
 
-    // ── flow2 ─────────────────────────────────
+    // unload
     public DbSet<Pallet> Pallets { get; set; }
-    public DbSet<Basket> Baskets { get; set; }
     public DbSet<UnloadSession> UnloadSessions { get; set; }
     public DbSet<UnloadLine> UnloadLines { get; set; }
-    public DbSet<BasketLine> BasketLines { get; set; }
 
-    // ── putaway ───────────────────────────────
+    // putaway
     public DbSet<PutawaySession> PutawaySessions { get; set; }
     public DbSet<WrappingSession> WrappingSessions { get; set; }
     public DbSet<ShipXQueue> ShipXQueues { get; set; }
+    public DbSet<PreworkCutLog> PreworkCutLogs { get; set; }
 
-    // ── picking (v1) ─────────────────────────
-    public DbSet<PickingSession> PickingSessions { get; set; }
-    public DbSet<PickingLine> PickingLines { get; set; }
-
-    // ── picking (v2 — Pick Order flow) ────────
+    // picking
     public DbSet<PickOrder> PickOrders { get; set; }
     public DbSet<PickOrderDetail> PickOrderDetails { get; set; }
     public DbSet<PickOrderSub> PickOrderSubs { get; set; }
     public DbSet<PickStation> PickStations { get; set; }
 
-    // ── audit ─────────────────────────────────
+    // packing
+    public DbSet<Packing> Packings { get; set; }
+    public DbSet<PackingDetail> PackingDetails { get; set; }
+    public DbSet<PackingPartScan> PackingPartScans { get; set; }
+    public DbSet<CheckInSlot> CheckInSlots { get; set; }
+    public DbSet<CheckInEntry> CheckInEntries { get; set; }
+
+    // sorting
+    public DbSet<SortingPallet>     SortingPallets    { get; set; }
+    public DbSet<SortingStation>    SortingStations   { get; set; }
+    public DbSet<SortingPalletPack> SortingPalletPacks { get; set; }
+    public DbSet<SortingBatchQueue> SortingBatchQueues { get; set; }
+    public DbSet<StationAuditLog>   StationAuditLogs  { get; set; }
+
+    // basket
+    public DbSet<Basket> Baskets { get; set; }
+    public DbSet<BasketLine> BasketLines { get; set; }
+
+    // audit
     public DbSet<CancelLog> CancelLogs { get; set; }
 
+    // customer
+    public DbSet<CustomerOrder> CustomerOrders { get; set; }
+
     protected override void OnModelCreating(ModelBuilder mb)
-    
     {
-        // ── Customer ──────────────────────────────
-        mb.Entity<SalesOrder>()
-            .HasOne(x => x.Customer)
-            .WithMany(x => x.SalesOrders)
-            .HasForeignKey(x => x.CustomerId)
-            .OnDelete(DeleteBehavior.Restrict);
+        mb.ApplyConfigurationsFromAssembly(typeof(WmsDbContext).Assembly);
 
-        mb.Entity<SalesOrder>()
-            .HasOne(x => x.Creator)
+        // Packing: ป้องกัน multiple cascade paths ใน SQL Server
+        mb.Entity<PackingDetail>()
+            .HasOne(d => d.PickOrder)
             .WithMany()
-            .HasForeignKey(x => x.CreatedBy)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(d => d.PickOrderId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // ── SalesOrderItem ────────────────────────
-        mb.Entity<SalesOrderItem>()
-            .HasIndex(x => new { x.OrderId, x.PartId })
+        mb.Entity<Packing>()
+            .HasOne(p => p.Pallet)
+            .WithMany()
+            .HasForeignKey(p => p.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // Sorting: Pack → SortingPallet (nullable FK)
+        mb.Entity<Packing>()
+            .HasOne(p => p.SortingPallet)
+            .WithMany(sp => sp.Packings)
+            .HasForeignKey(p => p.SortingPalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // SortingStation: each station ↔ optional current pallet
+        mb.Entity<SortingStation>()
+            .HasOne(s => s.CurrentPallet)
+            .WithMany()
+            .HasForeignKey(s => s.CurrentPalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        // SortingPalletPack: queue link
+        mb.Entity<SortingPalletPack>()
+            .HasOne(q => q.Pallet)
+            .WithMany()
+            .HasForeignKey(q => q.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<SortingPalletPack>()
+            .HasOne(q => q.Packing)
+            .WithMany()
+            .HasForeignKey(q => q.PackingId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<SortingPalletPack>()
+            .HasIndex(q => new { q.Status, q.ScheduledAt });
+
+        // SortingBatchQueue
+        mb.Entity<SortingBatchQueue>()
+            .HasOne(b => b.AssignedPallet)
+            .WithMany()
+            .HasForeignKey(b => b.AssignedPalletId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<SortingBatchQueue>()
+            .HasIndex(b => new { b.Status, b.QueuedAt });
+
+        // Seed 10 sorting stations (ID 1..10)
+        mb.Entity<SortingStation>().HasData(
+            Enumerable.Range(1, 10).Select(i => new SortingStation
+            {
+                StationId = i,
+                Enabled   = true,
+            }).ToArray()
+        );
+
+        // CheckIn
+        mb.Entity<CheckInEntry>()
+            .HasOne(e => e.Slot)
+            .WithMany(s => s.Entries)
+            .HasForeignKey(e => e.SlotId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<CheckInEntry>()
+            .HasOne(e => e.Packing)
+            .WithMany()
+            .HasForeignKey(e => e.PackingId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<CheckInEntry>()
+            .HasIndex(e => e.PackingId)
             .IsUnique();
 
-        mb.Entity<SalesOrderItem>()
-            .HasOne(x => x.SalesOrder)
-            .WithMany(x => x.Items)
-            .HasForeignKey(x => x.OrderId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<SalesOrderItem>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── ReturnOrder ───────────────────────────
-        mb.Entity<ReturnOrder>()
-            .HasOne(x => x.SalesOrder)
-            .WithMany(x => x.ReturnOrders)
-            .HasForeignKey(x => x.OrderId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<ReturnOrder>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── ReturnLine ────────────────────────────
-        mb.Entity<ReturnLine>()
-            .HasOne(x => x.ReturnOrder)
-            .WithMany(x => x.Lines)
-            .HasForeignKey(x => x.ReturnId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<ReturnLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<ReturnLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PurchaseOrder ─────────────────────
-        mb.Entity<PurchaseOrder>()
-            .HasOne(x => x.Supplier)
-            .WithMany(x => x.PurchaseOrders)
-            .HasForeignKey(x => x.SupplierId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PurchaseOrder>()
-            .HasOne(x => x.Creator)
-            .WithMany()
-            .HasForeignKey(x => x.CreatedBy)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── POItem ────────────────────────────
-        mb.Entity<POItem>()
-            .HasIndex(x => new { x.POId, x.PartId })
+        // PartSerial: unique (PartId, SerialNo)
+        mb.Entity<PartSerial>()
+            .HasIndex(s => new { s.PartId, s.SerialNo })
             .IsUnique();
 
-        mb.Entity<POItem>()
-            .HasOne(x => x.PurchaseOrder)
-            .WithMany(x => x.Items)
-            .HasForeignKey(x => x.POId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<POItem>()
-            .HasOne(x => x.Part)
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.Packing)
             .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(s => s.PackingId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // ── ReceivingSession ──────────────────
-        mb.Entity<ReceivingSession>()
-            .HasOne(x => x.PurchaseOrder)
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.Pallet)
             .WithMany()
-            .HasForeignKey(x => x.POId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(s => s.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        mb.Entity<ReceivingSession>()
-            .HasOne(x => x.Operator)
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.ReceiptLine)
             .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(s => s.ReceiptLineId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // ── ReceiptLine ───────────────────────
-        mb.Entity<ReceiptLine>()
-            .HasOne(x => x.Session)
-            .WithMany(x => x.Lines)
-            .HasForeignKey(x => x.SessionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<ReceiptLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<ReceiptLine>()
-            .HasOne(x => x.Pallet)
-            .WithMany(x => x.ReceiptLines)
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .IsRequired(false);
-
-        mb.Entity<ReceiptLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── UnloadSession ─────────────────────
-        mb.Entity<UnloadSession>()
-            .HasOne(x => x.Pallet)
-            .WithMany()
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<UnloadSession>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── UnloadLine ────────────────────────
-        // ไม่ต้อง unique (SessionId, PartId) — รองรับ partial unload หลายครั้งต่อ Part
-        mb.Entity<UnloadLine>()
-            .HasOne(x => x.Session)
-            .WithMany(x => x.UnloadLines)
-            .HasForeignKey(x => x.SessionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<UnloadLine>()
-            .HasOne(x => x.Pallet)
-            .WithMany(x => x.UnloadLines)
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<UnloadLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<UnloadLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── BasketLine ────────────────────────
-        mb.Entity<BasketLine>()
-            .HasOne(x => x.Session)
-            .WithMany(x => x.BasketLines)
-            .HasForeignKey(x => x.SessionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<BasketLine>()
-            .HasOne(x => x.Basket)
-            .WithMany(x => x.BasketLines)
-            .HasForeignKey(x => x.BasketId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<BasketLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<BasketLine>()
-            .HasOne(x => x.Pallet)
-            .WithMany()
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<BasketLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PutawaySession ────────────────────
-        mb.Entity<PutawaySession>()
-            .HasOne(x => x.Pallet)
-            .WithMany()
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PutawaySession>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── WrappingSession ────────────────────
-        mb.Entity<WrappingSession>()
-            .HasOne(x => x.PutawaySession)
-            .WithMany()
-            .HasForeignKey(x => x.PutawayId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<WrappingSession>()
-            .HasOne(x => x.Pallet)
-            .WithMany()
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── ShipXQueue ──────────────────────────
-        mb.Entity<ShipXQueue>()
-            .HasOne(x => x.PutawaySession)
-            .WithMany()
-            .HasForeignKey(x => x.PutawayId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<ShipXQueue>()
-            .HasOne(x => x.Pallet)
-            .WithMany()
-            .HasForeignKey(x => x.PalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PickingSession ───────────────────
-        mb.Entity<PickingSession>()
-            .HasOne(x => x.PackPallet)
-            .WithMany()
-            .HasForeignKey(x => x.PackPalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PickingSession>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PickingLine ─────────────────────
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.Session)
-            .WithMany(x => x.Lines)
-            .HasForeignKey(x => x.SessionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.PickPallet)
-            .WithMany()
-            .HasForeignKey(x => x.PickPalletId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.Part)
-            .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<PickingLine>()
-            .HasOne(x => x.Operator)
-            .WithMany()
-            .HasForeignKey(x => x.OperatorId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PickOrder ────────────────────────
+        // CustomerOrder relationships (nullable FKs, prevent cascade issues)
         mb.Entity<PickOrder>()
-            .HasOne(x => x.Creator)
+            .HasOne(p => p.CustomerOrder)
+            .WithMany(c => c.PickOrders)
+            .HasForeignKey(p => p.CustomerOrderId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<CheckInSlot>()
+            .HasOne(s => s.CustomerOrder)
             .WithMany()
-            .HasForeignKey(x => x.CreatedBy)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(s => s.CustomerOrderId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // ── PickOrderDetail ─────────────────
-        mb.Entity<PickOrderDetail>()
-            .HasOne(x => x.PickOrder)
-            .WithMany(x => x.Details)
-            .HasForeignKey(x => x.PickOrderId)
-            .OnDelete(DeleteBehavior.Cascade);
+        // Basket: ป้องกัน multiple cascade paths
+        mb.Entity<BasketLine>()
+            .HasOne(l => l.Basket)
+            .WithMany(b => b.Lines)
+            .HasForeignKey(l => l.BasketId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        mb.Entity<PickOrderDetail>()
-            .HasOne(x => x.Part)
+        mb.Entity<BasketLine>()
+            .HasOne(l => l.UnloadLine)
             .WithMany()
-            .HasForeignKey(x => x.PartId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(l => l.UnloadLineId)
+            .OnDelete(DeleteBehavior.NoAction);
 
-        // ── PickOrderSub ────────────────────
-        mb.Entity<PickOrderSub>()
-            .HasOne(x => x.PickOrderDetail)
-            .WithMany(x => x.Subs)
-            .HasForeignKey(x => x.PickOrderDetailId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<PickOrderSub>()
-            .HasOne(x => x.ReceiptLine)
-            .WithMany(x => x.PickOrderSubs)
-            .HasForeignKey(x => x.ReceiptLineId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // ── PickStation ───────────────────────
-        mb.Entity<PickStation>()
-            .HasOne(x => x.CurrentPallet)
+        mb.Entity<BasketLine>()
+            .HasOne(l => l.Pallet)
             .WithMany()
-            .HasForeignKey(x => x.CurrentPalletId)
-            .OnDelete(DeleteBehavior.SetNull)
-            .IsRequired(false);
-
-        // ── CancelLog ─────────────────────────
-        mb.Entity<CancelLog>()
-            .HasOne(x => x.Requester)
-            .WithMany()
-            .HasForeignKey(x => x.RequestBy)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        mb.Entity<CancelLog>()
-            .HasOne(x => x.Approver)
-            .WithMany()
-            .HasForeignKey(x => x.ApprovedBy)
-            .OnDelete(DeleteBehavior.Restrict)
-            .IsRequired(false);
+            .HasForeignKey(l => l.PalletId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         base.OnModelCreating(mb);
     }

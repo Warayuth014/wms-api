@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.DTOs;
+using WmsApi.Hubs;
 using WmsApi.Models;
+using WmsApi.Services.Picking;
 
 namespace WmsApi.Controllers;
 
@@ -12,7 +15,10 @@ namespace WmsApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/simulate")]
-public class SimulationController(WmsDbContext db) : ControllerBase
+public class SimulationController(
+    WmsDbContext db,
+    IHubContext<PutawayHub> hub,
+    IPickingService pickingService) : ControllerBase
 {
     // ─────────────────────────────────────────────
     //  AGV — จำลองรถขนอัตโนมัติ
@@ -64,7 +70,7 @@ public class SimulationController(WmsDbContext db) : ControllerBase
             pallet.Status = dest switch
             {
                 "PREWORK" => "PREWORK",        // ถึง Prework → รอติดฉลาก
-                "REPLENISH" => "STORED",       // ถึง Replenish Rack → เก็บที่ Rack
+                "REPLENISH" => "REPLENISH",     // ถึง Replenish Rack → รอ Unload
                 "PICK_STATION" => "AVAILABLE",  // ถึง Pick Station → พร้อม pick
                 "UNLOAD_STATION" => "FG",       // ถึง Unload Station → พร้อม unload
                 _ => "AVAILABLE",
@@ -75,8 +81,29 @@ public class SimulationController(WmsDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
+        // ── Auto-allocate เมื่อ pallet เข้า ASRS (STORED) ──
+        var allocatedInfo = new List<string>();
+        if (dest == "ASRS" && pallet.Status == "STORED")
+        {
+            var partIds = await db.ReceiptLines
+                .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
+                .Select(l => l.PartId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var pid in partIds)
+            {
+                var (_, qty) = await pickingService.AllocatePendingForPartAsync(pid);
+                if (qty > 0) allocatedInfo.Add($"{pid}×{qty}");
+            }
+        }
+
+        var allocMsg = allocatedInfo.Count > 0
+            ? $" | Auto-allocated: {string.Join(", ", allocatedInfo)}"
+            : "";
+
         return Ok(new ApiSuccess(true,
-            $"🤖 AGV ส่ง Pallet '{req.PalletId}' ถึง {dest} แล้ว (สถานะ: {pallet.Status})"));
+            $"🤖 AGV ส่ง Pallet '{req.PalletId}' ถึง {dest} แล้ว (สถานะ: {pallet.Status}){allocMsg}"));
     }
 
     // ─────────────────────────────────────────────
@@ -112,9 +139,57 @@ public class SimulationController(WmsDbContext db) : ControllerBase
 
         if (dest == "REPLENISH")
         {
-            // Replenish → Pallet อยู่ที่ Rack ไม่ใช่ ASRS
-            pallet.Status = hasItems ? "STORED" : "AVAILABLE";
+            // Replenish → Status = "REPLENISH" (ป้องกันไม่ให้ scan Putaway ซ้ำ, รอ Unload)
+            pallet.Status = hasItems ? "REPLENISH" : "AVAILABLE";
             pallet.Location = "REPLENISH";
+        }
+        else if (dest == "PREWORK")
+        {
+            // Location ถูกแมพไว้แล้วตอน confirm (PW-STN-x) — ใช้ต่อเลย
+            var stationId = pallet.Location ?? "PREWORK";
+
+            if (!hasItems)
+            {
+                pallet.Status = "AVAILABLE";
+                pallet.Location = null;
+            }
+            else
+            {
+                // ── Auto-cut: ตัดยอด ReceiptLines ออกจาก Pallet ทันที ──
+                var lines = await db.ReceiptLines
+                    .Include(l => l.Part)
+                    .Where(l => l.PalletId == palletId && l.Status == "PALLETIZED")
+                    .ToListAsync();
+
+                foreach (var line in lines)
+                {
+                    // บันทึก PreworkCutLog
+                    db.PreworkCutLogs.Add(new PreworkCutLog
+                    {
+                        PalletId = palletId,
+                        StationId = stationId,
+                        PartId = line.PartId,
+                        Owner = line.Part?.Owner,
+                        Brand = line.Part?.Brand,
+                        ItemDesc = line.Part?.ItemDesc,
+                        ImageUrl = line.Part?.ImageUrl,
+                        Qty = line.QtyReceived,
+                        LotNumber = line.LotNumber,
+                        ExpiredDate = line.ExpiredDate,
+                        Condition = line.Condition,
+                        OperatorId = putaway?.OperatorId ?? "SYSTEM",
+                        CutAt = DateTime.UtcNow,
+                    });
+
+                    // ตัดยอด — เปลี่ยน status + ปลด PalletId
+                    line.Status = "PREWORK_RECEIVED";
+                    line.PalletId = null;
+                    line.UpdatedAt = DateTime.UtcNow;
+                }
+
+                // Pallet ว่างแล้ว รอคืน (Location ยังเป็น PW-STN-x เดิม)
+                pallet.Status = "AVAILABLE";
+            }
         }
         else
         {
@@ -126,8 +201,38 @@ public class SimulationController(WmsDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
+        // ── Auto-allocate: pallet นี้เข้า ASRS (STORED) แล้ว ──
+        // ให้เติม PickOrderSub ให้ PickOrder ที่ยัง allocate ไม่ครบของ part เหล่านี้
+        var allocatedInfo = new List<string>();
+        if (dest == "ASRS" && pallet.Status == "STORED")
+        {
+            var partIds = await db.ReceiptLines
+                .Where(l => l.PalletId == palletId && l.Status == "PALLETIZED")
+                .Select(l => l.PartId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var pid in partIds)
+            {
+                var (subs, qty) = await pickingService.AllocatePendingForPartAsync(pid);
+                if (qty > 0) allocatedInfo.Add($"{pid}×{qty}");
+            }
+        }
+
+        // ── SignalR: broadcast pallet arrived ──
+        await hub.Clients.All.SendAsync("PalletArrived", new
+        {
+            stationId = pallet.Location,
+            palletId,
+            destination = dest,
+        });
+
+        var allocMsg = allocatedInfo.Count > 0
+            ? $" | Auto-allocated: {string.Join(", ", allocatedInfo)}"
+            : "";
+
         return Ok(new ApiSuccess(true,
-            $"📦 Pallet '{palletId}' ถึงปลายทาง {pallet.Location} แล้ว (Status: {pallet.Status})"));
+            $"📦 Pallet '{palletId}' ถึงปลายทาง {pallet.Location} แล้ว (Status: {pallet.Status}){allocMsg}"));
     }
 
     /// <summary>
@@ -166,60 +271,6 @@ public class SimulationController(WmsDbContext db) : ControllerBase
     }
 
     // ─────────────────────────────────────────────
-    //  Labeling — จำลองการติดฉลาก PW → FG
-    // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// ติดฉลากเสร็จ → PW → FG + พร้อม putaway ไป ASRS
-    /// </summary>
-    [HttpPost("labeling/complete/{palletId}")]
-    public async Task<IActionResult> LabelingComplete(string palletId)
-    {
-        var pallet = await db.Pallets.FindAsync(palletId);
-        if (pallet is null)
-            return NotFound(new ApiError($"Pallet '{palletId}' not found."));
-
-        if (pallet.Type != "PW")
-            return BadRequest(new ApiError(
-                $"Pallet '{palletId}' ไม่ใช่ประเภท PW (ปัจจุบัน: {pallet.Type})"));
-
-        pallet.Type = "FG";
-        pallet.Status = "FG";     // พร้อม putaway
-        pallet.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        return Ok(new ApiSuccess(true,
-            $"🏷️ Pallet '{palletId}' ติดฉลากเสร็จ (PW → FG) พร้อม Putaway เข้า ASRS"));
-    }
-
-    // ─────────────────────────────────────────────
-    //  Basket Return — จำลองการคืน Basket
-    // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// Robot/AGV รับ Basket ที่ว่างแล้วกลับไป
-    /// RETURNING → AVAILABLE
-    /// </summary>
-    [HttpPost("basket/return-complete/{basketId}")]
-    public async Task<IActionResult> BasketReturnComplete(string basketId)
-    {
-        var basket = await db.Baskets.FindAsync(basketId);
-        if (basket is null)
-            return NotFound(new ApiError($"Basket '{basketId}' not found."));
-
-        basket.Status = "AVAILABLE";
-        basket.Destination = null;
-        basket.Zone = null;
-        basket.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        return Ok(new ApiSuccess(true,
-            $"🧺 Basket '{basketId}' ถูกส่งกลับเรียบร้อย (AVAILABLE)"));
-    }
-
-    // ─────────────────────────────────────────────
     //  Pallet Return — จำลอง pallet กลับจาก Pick/Unload
     // ─────────────────────────────────────────────
 
@@ -251,8 +302,139 @@ public class SimulationController(WmsDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
+        // ── Auto-allocate เมื่อ pallet กลับ ASRS แล้วยังมีของ (STORED) ──
+        var allocatedInfo = new List<string>();
+        if (dest == "ASRS" && pallet.Status == "STORED")
+        {
+            var partIds = await db.ReceiptLines
+                .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
+                .Select(l => l.PartId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var pid in partIds)
+            {
+                var (_, qty) = await pickingService.AllocatePendingForPartAsync(pid);
+                if (qty > 0) allocatedInfo.Add($"{pid}×{qty}");
+            }
+        }
+
+        var allocMsg = allocatedInfo.Count > 0
+            ? $" | Auto-allocated: {string.Join(", ", allocatedInfo)}"
+            : "";
+
         return Ok(new ApiSuccess(true,
-            $"📦 Pallet '{req.PalletId}' ส่งกลับ {dest} เรียบร้อย (Status: {pallet.Status})"));
+            $"📦 Pallet '{req.PalletId}' ส่งกลับ {dest} เรียบร้อย (Status: {pallet.Status}){allocMsg}"));
+    }
+
+    // ─────────────────────────────────────────────
+    //  Prework — จำลองติดสติ๊กเกอร์ + แมพลง Pallet เปล่า
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// จำลองขั้นตอน: คนงานเอาสินค้าที่ตัดยอด (PW) ไปติดสติ๊กเกอร์
+    /// แล้วแมพลง Pallet เปล่า → สินค้าเปลี่ยนเป็น FG พร้อมส่ง ASRS
+    /// </summary>
+    [HttpPost("prework/label-and-repalletize")]
+    public async Task<IActionResult> PreworkLabelAndRepalletize([FromBody] PreworkRepalletizeRequest req)
+    {
+        // 1. หา Pallet เปล่า
+        var pallet = await db.Pallets.FindAsync(req.PalletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
+
+        if (pallet.Status != "AVAILABLE")
+            return BadRequest(new ApiError(
+                $"Pallet '{req.PalletId}' ไม่ว่าง (สถานะ: {pallet.Status})"));
+
+        // 2. หา ReceiptLines ที่ตัดยอดแล้ว (PREWORK_RECEIVED, PalletId=null)
+        var lines = await db.ReceiptLines
+            .Include(l => l.Part)
+            .Where(l => l.Status == "PREWORK_RECEIVED" && l.PalletId == null)
+            .ToListAsync();
+
+        if (lines.Count == 0)
+            return BadRequest(new ApiError("ไม่มีสินค้าที่ตัดยอดรอแมพ (PREWORK_RECEIVED)"));
+
+        // 3. เลือกเฉพาะ lines ที่ compatible (Owner + Batch) กับ Pallet
+        var existingLines = await db.ReceiptLines
+            .Include(l => l.Part)
+            .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
+            .ToListAsync();
+
+        // หา Owner ที่ lock ไว้แล้ว (ถ้า Pallet มีของอยู่)
+        var lockedOwner = existingLines
+            .Where(l => l.Part != null)
+            .Select(l => l.Part!.Owner)
+            .FirstOrDefault();
+
+        // หา Part→Batch ที่ lock ไว้แล้ว
+        var lockedBatches = existingLines
+            .Where(l => l.PartId != null)
+            .GroupBy(l => l.PartId!)
+            .ToDictionary(g => g.Key, g => g.First().LotNumber);
+
+        // ถ้ายังไม่มี lock → ใช้ Owner ของ line แรก
+        if (lockedOwner == null)
+            lockedOwner = lines.FirstOrDefault(l => l.Part != null)?.Part!.Owner;
+
+        // กรอง lines ที่ Owner ตรง
+        var compatible = lines
+            .Where(l => l.Part == null || l.Part.Owner == lockedOwner)
+            .ToList();
+
+        // กรอง Batch — Part เดียวกันต้อง Batch เดียวกัน
+        var selected = new List<WmsApi.Models.ReceiptLine>();
+        var batchMap = new Dictionary<string, string?>(lockedBatches!);
+
+        foreach (var line in compatible)
+        {
+            if (line.PartId != null && batchMap.TryGetValue(line.PartId, out var existingBatch))
+            {
+                if (line.LotNumber != existingBatch)
+                    continue; // Batch ไม่ตรง → ข้าม
+            }
+
+            selected.Add(line);
+            if (line.PartId != null && !batchMap.ContainsKey(line.PartId))
+                batchMap[line.PartId] = line.LotNumber;
+        }
+
+        if (selected.Count == 0)
+            return BadRequest(new ApiError("ไม่มีสินค้าที่ compatible กับ Pallet นี้ได้"));
+
+        var skipped = lines.Count - selected.Count;
+
+        // 4. แมพสินค้าลง Pallet + เปลี่ยน PW → FG
+        foreach (var line in selected)
+        {
+            line.PalletId = req.PalletId;
+            line.Condition = "FG";
+            line.Status = "PALLETIZED";
+            line.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // 4. Update Pallet → PW + PREWORK (เพื่อให้ PW-STN-2,4,6 scan ได้)
+        pallet.Type = "PW";
+        pallet.Status = "PREWORK";
+        pallet.Location = "PREWORK";
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        // ── SignalR: broadcast labeling completed ──
+        await hub.Clients.All.SendAsync("LabelingCompleted", new
+        {
+            palletId = req.PalletId,
+            palletType = pallet.Type,
+            palletStatus = pallet.Status,
+        });
+
+        var msg = $"🏷️ ติดสติ๊กเกอร์เสร็จ — แมพ {selected.Count} รายการลง Pallet '{req.PalletId}' (PW→FG) พร้อมส่ง ASRS จาก PW-STN-2/4/6";
+        if (skipped > 0)
+            msg += $"\n⚠️ ข้าม {skipped} รายการ (คนละ Owner/Batch) — รอแมพ Pallet อื่น";
+
+        return Ok(new ApiSuccess(true, msg));
     }
 
 }
@@ -273,4 +455,8 @@ public record AsrsRetrieveRequest(
 public record PalletReturnCompleteRequest(
     string PalletId,
     string? Destination  // ASRS | ZONE_PICK
+);
+
+public record PreworkRepalletizeRequest(
+    string PalletId      // Pallet เปล่าที่จะแมพสินค้าลง
 );

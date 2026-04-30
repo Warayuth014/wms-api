@@ -1,0 +1,13 @@
+using WmsApi.DTOs;
+using WmsApi.Services.Common;
+
+namespace WmsApi.Services.Unload;
+
+public interface IUnloadService
+{
+    Task<ServiceResult> ScanPalletAsync(string palletId);
+    Task<ServiceResult> ConfirmLabelingAsync(ConfirmLabelingRequest req);
+    Task<ServiceResult> OpenSessionAsync(OpenUnloadRequest req);
+    Task<ServiceResult> ConfirmUnloadAsync(ConfirmUnloadRequest req);
+    Task<ServiceResult> ReturnPalletToAsisAsync(ReturnPalletToAsisRequest req);
+}
