@@ -50,7 +50,8 @@ public record PickItemOnPallet(
     string? ImageUrl,
     int QtyOnPallet,
     int QtyToPickSuggested,
-    string Condition
+    string Condition,
+    List<string> AvailableSerials
 );
 
 public record AssignPickStationResponse(
@@ -65,7 +66,8 @@ public record AssignPickStationResponse(
 
 public record PickConfirmItem(
     string PartId,
-    int Qty
+    int Qty,
+    List<string>? SerialNumbers = null
 );
 
 public record ConfirmPickRequest(

@@ -111,6 +111,20 @@ public class PickingService(WmsDbContext db) : IPickingService
             await db.SaveChangesAsync();
         }
 
+        var partIdsOnPallet = palletSubs
+            .Select(s => s.ReceiptLine!.PartId)
+            .Distinct()
+            .ToList();
+
+        var availableSerials = await db.PartSerials
+            .Where(s => s.PalletId == req.PalletId
+                     && partIdsOnPallet.Contains(s.PartId)
+                     && s.Status == "STORED")
+            .OrderBy(s => s.SerialNo)
+            .GroupBy(s => s.PartId)
+            .Select(g => new { PartId = g.Key, Serials = g.Select(x => x.SerialNo).ToList() })
+            .ToDictionaryAsync(x => x.PartId, x => x.Serials);
+
         var palletItems = palletSubs.Select(s => new PickItemOnPallet(
             PartId: s.ReceiptLine!.PartId,
             Owner: s.ReceiptLine!.Part!.Owner,
@@ -119,7 +133,8 @@ public class PickingService(WmsDbContext db) : IPickingService
             ImageUrl: s.ReceiptLine!.Part!.ImageUrl,
             QtyOnPallet: s.ReceiptLine!.QtyReceived,
             QtyToPickSuggested: Math.Max(0, Math.Min(s.ReceiptLine!.QtyReceived, s.AllocatedQty - s.PickedQty)),
-            Condition: s.ReceiptLine!.Condition
+            Condition: s.ReceiptLine!.Condition,
+            AvailableSerials: availableSerials.GetValueOrDefault(s.ReceiptLine!.PartId, new List<string>())
         )).ToList();
 
         var allDetails = await db.PickOrderDetails
@@ -190,6 +205,23 @@ public class PickingService(WmsDbContext db) : IPickingService
             if (item.Qty <= 0)
                 continue;
 
+            var serialNumbers = item.SerialNumbers?
+                .Select(s => s.Trim().ToUpperInvariant())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList() ?? new List<string>();
+
+            if (serialNumbers.Count == 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"กรุณาสแกน S/N สำหรับ Part '{item.PartId}'"));
+
+            if (serialNumbers.Count != item.Qty)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"จำนวน S/N ({serialNumbers.Count}) ไม่ตรงกับ Qty ({item.Qty}) สำหรับ Part '{item.PartId}'"));
+
+            if (serialNumbers.Distinct().Count() != serialNumbers.Count)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ซ้ำกันสำหรับ Part '{item.PartId}'"));
+
             var sub = await db.PickOrderSubs
                 .Include(s => s.ReceiptLine).ThenInclude(l => l!.Part)
                 .Include(s => s.PickOrderDetail)
@@ -205,7 +237,48 @@ public class PickingService(WmsDbContext db) : IPickingService
 
             var sourceLine = sub.ReceiptLine!;
             var detail = sub.PickOrderDetail!;
-            var actualQty = Math.Min(item.Qty, Math.Min(sourceLine.QtyReceived, sub.AllocatedQty - sub.PickedQty));
+            var actualQty = serialNumbers.Count;
+            var maxPickQty = Math.Min(sourceLine.QtyReceived, sub.AllocatedQty - sub.PickedQty);
+            if (actualQty > maxPickQty)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"จำนวน S/N เกินจำนวนที่ Pick ได้สำหรับ Part '{item.PartId}' (สแกน {actualQty}, ได้สูงสุด {maxPickQty})"));
+
+            var serialsToMove = await db.PartSerials
+                .Where(s => s.PartId == item.PartId
+                         && serialNumbers.Contains(s.SerialNo))
+                .ToListAsync();
+
+            if (serialsToMove.Count != serialNumbers.Count)
+            {
+                var foundSet = serialsToMove.Select(s => s.SerialNo).ToHashSet();
+                var missing = serialNumbers.Where(sn => !foundSet.Contains(sn)).ToList();
+                return ServiceResult.BadRequest(new ApiError(
+                    $"ไม่พบ S/N: {string.Join(", ", missing)}"));
+            }
+
+            var wrongPallet = serialsToMove
+                .Where(s => s.PalletId != req.SourcePalletId)
+                .Select(s => s.SerialNo)
+                .ToList();
+            if (wrongPallet.Count > 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ไม่ได้อยู่บน Pallet '{req.SourcePalletId}': {string.Join(", ", wrongPallet)}"));
+
+            var wrongLine = serialsToMove
+                .Where(s => s.ReceiptLineId != sourceLine.LineId)
+                .Select(s => s.SerialNo)
+                .ToList();
+            if (wrongLine.Count > 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ไม่ตรงกับรายการ Pick นี้: {string.Join(", ", wrongLine)}"));
+
+            var unavailable = serialsToMove
+                .Where(s => s.Status != "STORED")
+                .Select(s => $"{s.SerialNo}({s.Status})")
+                .ToList();
+            if (unavailable.Count > 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ไม่พร้อม Pick: {string.Join(", ", unavailable)}"));
 
             sub.PickedQty += actualQty;
             if (sub.PickedQty >= sub.AllocatedQty)
@@ -225,7 +298,7 @@ public class PickingService(WmsDbContext db) : IPickingService
                 sourceLine.Status = "PICKED";
             }
 
-            db.ReceiptLines.Add(new ReceiptLine
+            var destLine = new ReceiptLine
             {
                 SessionId = sourceLine.SessionId,
                 POId = sourceLine.POId,
@@ -234,21 +307,14 @@ public class PickingService(WmsDbContext db) : IPickingService
                 QtyReceived = actualQty,
                 Status = "PALLETIZED",
                 OperatorId = req.OperatorId,
-            });
-
-            // ── Move serials: source pallet → dest pallet ──
-            var serialsToMove = await db.PartSerials
-                .Where(s => s.PartId == item.PartId
-                         && s.PalletId == req.SourcePalletId
-                         && s.Status == "STORED")
-                .OrderBy(s => s.Id)
-                .Take(actualQty)
-                .ToListAsync();
+            };
+            db.ReceiptLines.Add(destLine);
 
             var nowTs = DateTime.UtcNow;
             foreach (var s in serialsToMove)
             {
                 s.PalletId = req.DestPalletId;
+                s.ReceiptLine = destLine;
                 s.Status = "PICKED";
                 s.UpdatedAt = nowTs;
             }

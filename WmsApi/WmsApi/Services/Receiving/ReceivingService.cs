@@ -156,6 +156,43 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         ));
     }
 
+    public async Task<ServiceResult> ValidateSerialAsync(string partId, string serialNo)
+    {
+        if (string.IsNullOrWhiteSpace(partId))
+            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Part ID"));
+
+        if (string.IsNullOrWhiteSpace(serialNo))
+            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ S/N"));
+
+        var normalizedPartId = partId.Trim().ToUpperInvariant();
+        var normalizedSerialNo = serialNo.Trim().ToUpperInvariant();
+
+        var serial = await db.PartSerials
+            .FirstOrDefaultAsync(s =>
+                s.PartId == normalizedPartId &&
+                s.SerialNo == normalizedSerialNo);
+
+        if (serial is null)
+        {
+            return ServiceResult.NotFound(new ApiError(
+                $"ไม่พบ S/N '{normalizedSerialNo}' สำหรับ Part '{normalizedPartId}'",
+                "ตรวจสอบว่า Part ID และ S/N ตรงกับสินค้าที่สแกน"));
+        }
+
+        if (serial.ReceiptLineId != null || serial.PalletId != null || serial.PackingId != null)
+        {
+            return ServiceResult.BadRequest(new ApiError(
+                $"S/N '{normalizedSerialNo}' ถูกใช้งานแล้ว",
+                "กรุณาตรวจสอบสินค้าหรือใช้ S/N ที่ยังไม่ถูกรับเข้าระบบ"));
+        }
+
+        return ServiceResult.Ok(new ValidateReceivingSerialResponse(
+            PartId: serial.PartId,
+            SerialNo: serial.SerialNo,
+            Status: serial.Status
+        ));
+    }
+
     public async Task<ServiceResult> ScanPartAsync(ScanReceiptPartRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.PartId))
@@ -171,6 +208,29 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         {
             return ServiceResult.BadRequest(new ApiError(
                 $"จำนวนที่รับ ({req.QtyReceived}) ต้องมากกว่า 0"));
+        }
+
+        var scannedSerials = req.SerialNumbers?
+            .Select(s => s?.Trim().ToUpperInvariant())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!)
+            .ToList() ?? [];
+
+        if (req.SerialNumbers is { Count: > 0 } &&
+            scannedSerials.Count != req.SerialNumbers.Count)
+        {
+            return ServiceResult.BadRequest(new ApiError("Serial Number ต้องไม่เป็นค่าว่าง"));
+        }
+
+        if (scannedSerials.Count > 0 && scannedSerials.Count != req.QtyReceived)
+        {
+            return ServiceResult.BadRequest(new ApiError(
+                $"จำนวน Serial Number ({scannedSerials.Count}) ต้องเท่ากับจำนวนรับ ({req.QtyReceived})"));
+        }
+
+        if (scannedSerials.Distinct(StringComparer.OrdinalIgnoreCase).Count() != scannedSerials.Count)
+        {
+            return ServiceResult.BadRequest(new ApiError("Serial Number ซ้ำในรายการที่สแกน"));
         }
 
         var session = await db.ReceivingSessions.FindAsync(req.SessionId);
@@ -192,6 +252,37 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             return ServiceResult.BadRequest(new ApiError(
                 $"Part '{req.PartId}' ไม่อยู่ใน PO '{req.POId}'",
                 "กรุณาตรวจสอบว่าสแกนสินค้าถูกชิ้น"));
+        }
+
+        var scannedSerialEntities = new List<PartSerial>();
+        if (scannedSerials.Count > 0)
+        {
+            scannedSerialEntities = await db.PartSerials
+                .Where(s => s.PartId == req.PartId && scannedSerials.Contains(s.SerialNo))
+                .ToListAsync();
+
+            if (scannedSerialEntities.Count != scannedSerials.Count)
+            {
+                var found = scannedSerialEntities
+                    .Select(s => s.SerialNo)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var missing = scannedSerials.Where(s => !found.Contains(s)).ToList();
+                return ServiceResult.BadRequest(new ApiError(
+                    $"ไม่พบ S/N สำหรับ Part '{req.PartId}': {string.Join(", ", missing)}",
+                    "ตรวจสอบว่า Part ID และ S/N ตรงกับสินค้าที่สแกน"));
+            }
+
+            var usedSerials = scannedSerialEntities
+                .Where(s => s.ReceiptLineId != null || s.PalletId != null || s.PackingId != null)
+                .Select(s => s.SerialNo)
+                .ToList();
+
+            if (usedSerials.Count > 0)
+            {
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ถูกใช้งานแล้ว: {string.Join(", ", usedSerials)}",
+                    "กรุณาตรวจสอบสินค้าหรือใช้ S/N ที่ยังไม่ถูกรับเข้าระบบ"));
+            }
         }
 
         var existingPending = await db.ReceiptLines
@@ -239,8 +330,11 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         await db.SaveChangesAsync();
 
-        // ── Generate Serial Numbers ──
-        await GenerateSerialsAsync(req.PartId, req.QtyReceived, line.LineId, null);
+        // ── Serial Numbers ──
+        if (scannedSerials.Count > 0)
+            ApplyScannedSerials(scannedSerialEntities, line.LineId, null);
+        else
+            await GenerateSerialsAsync(req.PartId, req.QtyReceived, line.LineId, null);
         await db.SaveChangesAsync();
 
         return ServiceResult.Ok(new ScanReceiptPartResponse(
@@ -609,6 +703,23 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             POItemStatus: poItem?.Status ?? "PENDING",
             Message: message
         );
+
+    private static void ApplyScannedSerials(
+        IReadOnlyCollection<PartSerial> serials,
+        int? receiptLineId,
+        string? palletId)
+    {
+        if (serials.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        foreach (var serial in serials)
+        {
+            serial.ReceiptLineId = receiptLineId;
+            serial.PalletId = palletId;
+            serial.Status = "STORED";
+            serial.UpdatedAt = now;
+        }
+    }
 
     // ── Generate N serial numbers for a part ──
     private async Task GenerateSerialsAsync(string partId, int qty, int? receiptLineId, string? palletId)

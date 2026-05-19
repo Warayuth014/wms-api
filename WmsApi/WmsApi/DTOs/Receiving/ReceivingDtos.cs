@@ -43,7 +43,14 @@ public record ScanReceiptPartRequest(
     string POId,
     string PartId,
     int QtyReceived,
-    string OperatorId
+    string OperatorId,
+    List<string>? SerialNumbers = null
+);
+
+public record ValidateReceivingSerialResponse(
+    string PartId,
+    string SerialNo,
+    string Status
 );
 
 public record ScanReceiptPartResponse(
