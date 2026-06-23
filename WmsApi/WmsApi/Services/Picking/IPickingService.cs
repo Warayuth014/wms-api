@@ -7,6 +7,12 @@ public interface IPickingService
 {
     Task<ServiceResult> GetPickOrdersAsync();
     Task<ServiceResult> GetPickOrderAsync(string pickOrderId);
+
+    // New flow: 2 pages before scan-pallet
+    Task<ServiceResult> ListOrdersAsync();              // หน้า 1
+    Task<ServiceResult> GetOrderDetailAsync(string pickOrderId);   // หน้า 2
+    Task<ServiceResult> NotifyArrivalAsync(string pickOrderId);    // robot simulator
+    Task<ServiceResult> SuggestDestPalletsAsync(string? pickOrderId);  // pallet แนะนำเป็นปลายทาง (ต่อจากของเดิมถ้าเป็น order เดียวกัน)
     Task<ServiceResult> AssignStationAsync(AssignPickStationRequest req);
     Task<ServiceResult> ConfirmPickAsync(ConfirmPickRequest req);
     Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req);

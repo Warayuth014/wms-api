@@ -13,12 +13,303 @@ public class PickingService(WmsDbContext db) : IPickingService
         var orders = await db.PickOrders
             .Include(o => o.Details).ThenInclude(d => d.Part)
             .Include(o => o.Details).ThenInclude(d => d.Subs).ThenInclude(s => s.ReceiptLine)
-            .Where(o => o.Status == "OPEN")
+            .Where(o => o.Status == "WAITING" || o.Status == "PICKING")
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
 
         var result = orders.Select(BuildPickOrderResponse).ToList();
         return ServiceResult.Ok(result);
+    }
+
+    // ── หน้า 1: list orders แบบ summary (WAITING + PICKING) ────
+    public async Task<ServiceResult> ListOrdersAsync()
+    {
+        var orders = await db.PickOrders
+            .Include(o => o.Details).ThenInclude(d => d.Part)
+            .Include(o => o.Details).ThenInclude(d => d.Subs).ThenInclude(s => s.ReceiptLine)
+            .Where(o => o.Status == "WAITING" || o.Status == "PICKING")
+            .OrderBy(o => o.Status == "PICKING" ? 0 : 1)   // PICKING ขึ้นบน
+            .ThenByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        var result = orders.Select(o =>
+        {
+            var owner = o.Details.SelectMany(d => new[] { d.Part?.Owner ?? string.Empty })
+                .FirstOrDefault(s => !string.IsNullOrEmpty(s)) ?? string.Empty;
+            var pallets = o.Details
+                .SelectMany(d => d.Subs)
+                .Select(s => s.ReceiptLine?.PalletId)
+                .Where(p => p != null)
+                .Distinct()
+                .ToList();
+            return new PickOrderListItem(
+                PickOrderId: o.PickOrderId,
+                Status: o.Status,
+                Owner: owner,
+                CustomerOrderId: o.CustomerOrderId,
+                PartCount: o.Details.Count,
+                TotalRequiredQty: o.Details.Sum(d => d.RequiredQty),
+                PalletCount: pallets.Count,
+                CreatedAt: o.CreatedAt
+            );
+        }).ToList();
+
+        return ServiceResult.Ok(result);
+    }
+
+    // ── หน้า 2: order detail (pallets + parts) ────────────────
+    public async Task<ServiceResult> GetOrderDetailAsync(string pickOrderId)
+    {
+        var order = await db.PickOrders
+            .Include(o => o.Details).ThenInclude(d => d.Part)
+            .Include(o => o.Details).ThenInclude(d => d.Subs).ThenInclude(s => s.ReceiptLine)
+            .FirstOrDefaultAsync(o => o.PickOrderId == pickOrderId);
+
+        if (order is null)
+            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pick Order '{pickOrderId}'"));
+
+        var owner = order.Details.Select(d => d.Part?.Owner ?? string.Empty)
+            .FirstOrDefault(s => !string.IsNullOrEmpty(s)) ?? string.Empty;
+
+        // ── Pallets ────────────────────────────────────────
+        // จัดกลุ่ม PickOrderSub ตาม PalletId ของ ReceiptLine
+        var subsByPallet = order.Details
+            .SelectMany(d => d.Subs)
+            .Where(s => s.ReceiptLine?.PalletId != null)
+            .GroupBy(s => s.ReceiptLine!.PalletId!)
+            .ToList();
+
+        var palletIds = subsByPallet.Select(g => g.Key).ToList();
+
+        var palletMap = await db.Pallets
+            .Where(p => palletIds.Contains(p.PalletId))
+            .ToDictionaryAsync(p => p.PalletId);
+
+        var stationMap = await db.PickStations
+            .Where(s => s.CurrentPalletId != null && palletIds.Contains(s.CurrentPalletId))
+            .ToDictionaryAsync(s => s.CurrentPalletId!);
+
+        // Part master data ของ part ที่อยู่บน pallet เหล่านี้
+        var allPartIds = subsByPallet
+            .SelectMany(g => g.Select(s => s.ReceiptLine!.PartId))
+            .Distinct()
+            .ToList();
+        var partMaster = await db.Parts
+            .Where(p => allPartIds.Contains(p.PartId))
+            .ToDictionaryAsync(p => p.PartId);
+
+        var palletInfos = subsByPallet.Select(g =>
+        {
+            var pallet = palletMap.GetValueOrDefault(g.Key);
+            var station = stationMap.GetValueOrDefault(g.Key);
+
+            // Group subs by part within this pallet
+            var partsOnPallet = g
+                .GroupBy(s => s.ReceiptLine!.PartId)
+                .Select(pg =>
+                {
+                    var part = partMaster.GetValueOrDefault(pg.Key);
+                    return new PickOrderPalletPartInfo(
+                        PartId: pg.Key,
+                        Owner: part?.Owner ?? string.Empty,
+                        Brand: part?.Brand ?? string.Empty,
+                        ItemDesc: part?.ItemDesc ?? string.Empty,
+                        ImageUrl: part?.ImageUrl,
+                        AllocatedQty: pg.Sum(s => s.AllocatedQty),
+                        PickedQty: pg.Sum(s => s.PickedQty),
+                        Status: pg.All(s => s.Status == "PICKED")
+                            ? "PICKED"
+                            : pg.Any(s => s.Status == "PICKED") ? "PARTIAL" : "PENDING"
+                    );
+                })
+                .OrderBy(p => p.PartId)
+                .ToList();
+
+            return new PickOrderPalletInfo(
+                PalletId: g.Key,
+                PalletStatus: pallet?.Status ?? "UNKNOWN",
+                StationId: station?.StationId,
+                StationName: station?.Name,
+                PartCount: partsOnPallet.Count,
+                TotalQty: partsOnPallet.Sum(p => p.AllocatedQty),
+                Parts: partsOnPallet
+            );
+        }).OrderBy(p => p.PalletId).ToList();
+
+        // ── Parts ──────────────────────────────────────────
+        var partInfos = order.Details.Select(d => new PickOrderPartInfo(
+            PartId: d.PartId,
+            Owner: d.Part?.Owner ?? string.Empty,
+            Brand: d.Part?.Brand ?? string.Empty,
+            ItemDesc: d.Part?.ItemDesc ?? string.Empty,
+            ImageUrl: d.Part?.ImageUrl,
+            RequiredQty: d.RequiredQty,
+            ReservedQty: d.ReservedQty,
+            RemainingQty: d.RequiredQty - d.ReservedQty,
+            Status: d.Status
+        )).OrderBy(p => p.PartId).ToList();
+
+        return ServiceResult.Ok(new PickOrderDetailFull(
+            PickOrderId: order.PickOrderId,
+            Status: order.Status,
+            Owner: owner,
+            CustomerOrderId: order.CustomerOrderId,
+            CreatedAt: order.CreatedAt,
+            Pallets: palletInfos,
+            Parts: partInfos
+        ));
+    }
+
+    // ── Suggest dest pallet ─────────────────────────────────
+    // 1) ถ้ามี Packing OPEN ของ pickOrder นี้อยู่ → ใช้ pallet เดิมต่อ (ยังไม่ confirm pack)
+    // 2) ไม่งั้น → pallet ว่างถัดไป (Type=NULL + AVAILABLE)
+    public async Task<ServiceResult> SuggestDestPalletsAsync(string? pickOrderId)
+    {
+        // 1) มี packing record ของ order นี้ที่ยัง OPEN + pallet ยังอยู่ที่ Pick (ไม่ใช่ ZONE_PACK)?
+        if (!string.IsNullOrWhiteSpace(pickOrderId))
+        {
+            var ongoing = await db.Packings
+                .Include(p => p.Pallet)
+                .Where(p => p.PickOrderId == pickOrderId
+                         && p.Status == "OPEN"
+                         && p.Pallet != null
+                         && p.Pallet.Location != "ZONE_PACK")
+                .OrderByDescending(p => p.CreatedAt)
+                .Select(p => new
+                {
+                    p.PalletId,
+                    Status = p.Pallet!.Status,
+                    Location = p.Pallet!.Location,
+                    Continued = true,
+                })
+                .FirstOrDefaultAsync();
+
+            if (ongoing != null)
+                return ServiceResult.Ok(new[] { ongoing });
+        }
+
+        // 2) Default — pallet ว่างถัดไป
+        var pallets = await db.Pallets
+            .Where(p => p.Status == "AVAILABLE" && p.Type == null)
+            .OrderBy(p => p.PalletId)
+            .Take(1)
+            .Select(p => new
+            {
+                p.PalletId,
+                p.Status,
+                p.Location,
+                Continued = false,
+            })
+            .ToListAsync();
+
+        return ServiceResult.Ok(pallets);
+    }
+
+    // ── Robot simulator: WAITING → PICKING + assign pallets ──
+    public async Task<ServiceResult> NotifyArrivalAsync(string pickOrderId)
+    {
+        var order = await db.PickOrders
+            .FirstOrDefaultAsync(o => o.PickOrderId == pickOrderId);
+
+        if (order is null)
+            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pick Order '{pickOrderId}'"));
+
+        if (order.Status == "PICKING")
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pick Order '{pickOrderId}' อยู่ในสถานะ PICKING แล้ว"));
+
+        if (order.Status != "WAITING")
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pick Order '{pickOrderId}' ไม่อยู่ในสถานะ WAITING (สถานะ: {order.Status})"));
+
+        // หา pallet ทั้งหมดที่ผูกกับ order
+        var palletIds = await db.PickOrderSubs
+            .Include(s => s.ReceiptLine)
+            .Where(s => s.PickOrderDetail!.PickOrderId == pickOrderId
+                     && s.ReceiptLine!.PalletId != null)
+            .Select(s => s.ReceiptLine!.PalletId!)
+            .Distinct()
+            .ToListAsync();
+
+        if (palletIds.Count == 0)
+            return ServiceResult.BadRequest(new ApiError(
+                $"Pick Order '{pickOrderId}' ไม่มี pallet ผูกไว้"));
+
+        var availableStations = await db.PickStations
+            .Where(s => s.CurrentPalletId == null)
+            .OrderBy(s => s.StationId)
+            .ToListAsync();
+
+        var assignments = new List<NotifyArrivalAssignment>();
+        var stationIndex = 0;
+        var anyAssigned = false;
+
+        foreach (var pid in palletIds)
+        {
+            var pallet = await db.Pallets.FindAsync(pid);
+            if (pallet is null) continue;
+
+            var existingStation = await db.PickStations
+                .FirstOrDefaultAsync(s => s.CurrentPalletId == pid);
+
+            if (existingStation is not null)
+            {
+                pallet.Status = "PICKING";
+                pallet.UpdatedAt = DateTime.UtcNow;
+                assignments.Add(new NotifyArrivalAssignment(
+                    PalletId: pid,
+                    StationId: existingStation.StationId,
+                    Outcome: "ALREADY_AT_STATION"));
+                anyAssigned = true;
+                continue;
+            }
+
+            if (stationIndex >= availableStations.Count)
+            {
+                assignments.Add(new NotifyArrivalAssignment(
+                    PalletId: pid,
+                    StationId: null,
+                    Outcome: "NO_FREE_STATION"));
+                continue;
+            }
+
+            var station = availableStations[stationIndex++];
+            station.CurrentPalletId = pid;
+            pallet.Status = "PICKING";
+            pallet.Location = station.StationId;
+            pallet.UpdatedAt = DateTime.UtcNow;
+
+            // ReceiptLines บน pallet → PICKING
+            var receiptLines = await db.ReceiptLines
+                .Where(l => l.PalletId == pid && l.Status == "PALLETIZED")
+                .ToListAsync();
+            foreach (var rl in receiptLines)
+                rl.Status = "PICKING";
+
+            assignments.Add(new NotifyArrivalAssignment(
+                PalletId: pid,
+                StationId: station.StationId,
+                Outcome: "ASSIGNED"));
+            anyAssigned = true;
+        }
+
+        if (anyAssigned)
+        {
+            order.Status = "PICKING";
+        }
+
+        await db.SaveChangesAsync();
+
+        var msg = anyAssigned
+            ? $"Robot ส่ง pallet ของ '{pickOrderId}' มาถึงแล้ว — เริ่ม picking ได้"
+            : $"ไม่มี station ว่างให้ assign pallet ของ '{pickOrderId}' — รออีกครั้ง";
+
+        return ServiceResult.Ok(new NotifyArrivalResponse(
+            PickOrderId: pickOrderId,
+            Status: order.Status,
+            Assignments: assignments,
+            Message: msg
+        ));
     }
 
     public async Task<ServiceResult> GetPickOrderAsync(string pickOrderId)
@@ -72,7 +363,8 @@ public class PickingService(WmsDbContext db) : IPickingService
         }
 
         var order = await db.PickOrders
-            .FirstOrDefaultAsync(o => o.PickOrderId == pickOrderId && o.Status == "OPEN");
+            .FirstOrDefaultAsync(o => o.PickOrderId == pickOrderId
+                && (o.Status == "WAITING" || o.Status == "PICKING"));
 
         if (order is null)
             return ServiceResult.BadRequest(new ApiError($"Pick Order '{pickOrderId}' ไม่ถูกต้องหรือปิดแล้ว"));
@@ -179,7 +471,8 @@ public class PickingService(WmsDbContext db) : IPickingService
             return ServiceResult.BadRequest(new ApiError("กรุณาระบุรายการที่จะ pick"));
 
         var order = await db.PickOrders
-            .FirstOrDefaultAsync(o => o.PickOrderId == req.PickOrderId && o.Status == "OPEN");
+            .FirstOrDefaultAsync(o => o.PickOrderId == req.PickOrderId
+                && (o.Status == "WAITING" || o.Status == "PICKING"));
 
         if (order is null)
             return ServiceResult.BadRequest(new ApiError($"Pick Order '{req.PickOrderId}' ไม่ถูกต้องหรือปิดแล้ว"));
@@ -351,6 +644,13 @@ public class PickingService(WmsDbContext db) : IPickingService
         {
             order.Status = "COMPLETED";
             order.CompletedAt = DateTime.UtcNow;
+
+            // Auto-ส่ง dest pallet ไป ZONE_PACK
+            destPallet.Location = "ZONE_PACK";
+            destPallet.UpdatedAt = DateTime.UtcNow;
+
+            // Auto-return source pallets ของ order นี้ที่ค้างที่ stations → ASRS
+            await ReturnSourcePalletsToAsrsAsync(req.PickOrderId, req.DestPalletId);
         }
 
         await db.SaveChangesAsync();
@@ -373,6 +673,54 @@ public class PickingService(WmsDbContext db) : IPickingService
                 ? $"🎉 Pick Order '{req.PickOrderId}' ครบแล้ว!"
                 : "✅ Pick สำเร็จ"
         ));
+    }
+
+    /// Auto-return source pallets ของ pick order → ASRS หลัง pick ครบ
+    /// (กันค้างที่ Pick Station)
+    private async Task ReturnSourcePalletsToAsrsAsync(
+        string pickOrderId, string destPalletId)
+    {
+        // หา pallet ทั้งหมดที่เป็น source ของ order นี้
+        var sourcePalletIds = await db.PickOrderSubs
+            .Include(s => s.ReceiptLine)
+            .Where(s => s.PickOrderDetail!.PickOrderId == pickOrderId
+                     && s.ReceiptLine!.PalletId != null
+                     && s.ReceiptLine!.PalletId != destPalletId)
+            .Select(s => s.ReceiptLine!.PalletId!)
+            .Distinct()
+            .ToListAsync();
+
+        if (sourcePalletIds.Count == 0) return;
+
+        // Clear station references
+        var stations = await db.PickStations
+            .Where(s => s.CurrentPalletId != null
+                     && sourcePalletIds.Contains(s.CurrentPalletId))
+            .ToListAsync();
+        foreach (var st in stations)
+            st.CurrentPalletId = null;
+
+        // Pallets → STORED + ASRS
+        var now = DateTime.UtcNow;
+        var pallets = await db.Pallets
+            .Where(p => sourcePalletIds.Contains(p.PalletId)
+                     && p.Status == "PICKING")
+            .ToListAsync();
+        foreach (var p in pallets)
+        {
+            p.Status = "STORED";
+            p.Location = "ASRS";
+            p.UpdatedAt = now;
+        }
+
+        // ReceiptLines: PICKING → PALLETIZED (ถ้ายังมี qty) หรือ PICKED (ถ้าหมด)
+        var receiptLines = await db.ReceiptLines
+            .Where(l => sourcePalletIds.Contains(l.PalletId!) && l.Status == "PICKING")
+            .ToListAsync();
+        foreach (var rl in receiptLines)
+        {
+            rl.Status = rl.QtyReceived > 0 ? "PALLETIZED" : "PICKED";
+        }
     }
 
     public async Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req)
@@ -519,7 +867,7 @@ public class PickingService(WmsDbContext db) : IPickingService
         var pickOrder = new PickOrder
         {
             PickOrderId = orderId,
-            Status = "OPEN",
+            Status = "WAITING",   // รอ robot ขนของมาที่ station (notify-arrival)
             CreatedBy = req.OperatorId,
             CustomerOrderId = customerOrderId,
             CreatedAt = DateTime.UtcNow,
@@ -574,78 +922,14 @@ public class PickingService(WmsDbContext db) : IPickingService
 
         await db.SaveChangesAsync();
 
-        // ── อัปเดต Pallet: Status → PICKING, assign Station ──
-        var palletIds = await db.ReceiptLines
-            .Where(l => db.PickOrderSubs
-                .Where(s => s.PickOrderDetail!.PickOrderId == orderId)
-                .Select(s => s.ReceiptLineId)
-                .Contains(l.LineId))
-            .Select(l => l.PalletId)
-            .Distinct()
-            .ToListAsync();
-
-        var availableStations = await db.PickStations
-            .Where(s => s.CurrentPalletId == null)
-            .OrderBy(s => s.StationId)
-            .ToListAsync();
-
-        var stationIndex = 0;
-        var assignedPallets = new List<string>();
-
-        foreach (var pid in palletIds)
-        {
-            if (pid is null) continue;
-
-            var pallet = await db.Pallets.FindAsync(pid);
-            if (pallet is null) continue;
-
-            // เช็คว่า pallet อยู่ station อยู่แล้วหรือยัง
-            var existingStation = await db.PickStations
-                .FirstOrDefaultAsync(s => s.CurrentPalletId == pid);
-
-            if (existingStation is not null)
-            {
-                // อยู่ station แล้ว แค่อัปเดต status
-                pallet.Status = "PICKING";
-                pallet.UpdatedAt = DateTime.UtcNow;
-                assignedPallets.Add($"{pid}→{existingStation.StationId}");
-                continue;
-            }
-
-            if (stationIndex >= availableStations.Count)
-            {
-                // Station เต็ม — ไม่ assign แต่ยังสร้าง order ได้
-                continue;
-            }
-
-            var station = availableStations[stationIndex++];
-            station.CurrentPalletId = pid;
-
-            pallet.Status = "PICKING";
-            pallet.Location = station.StationId;
-            pallet.UpdatedAt = DateTime.UtcNow;
-
-            // อัปเดต ReceiptLines บน Pallet นี้ด้วย
-            var receiptLines = await db.ReceiptLines
-                .Where(l => l.PalletId == pid && l.Status == "PALLETIZED")
-                .ToListAsync();
-            foreach (var rl in receiptLines)
-                rl.Status = "PICKING";
-
-            assignedPallets.Add($"{pid}→{station.StationId}");
-        }
-
-        await db.SaveChangesAsync();
-
-        var stationMsg = assignedPallets.Count > 0
-            ? $" | Pallet: {string.Join(", ", assignedPallets)}"
-            : "";
-
+        // หมายเหตุ: ไม่ assign Pallet → Station ที่ขั้น create
+        // → ต้องเรียก /picking/orders/{id}/notify-arrival เพื่อจำลอง robot ขนของมาถึง station
         return ServiceResult.Ok(new
         {
             Success = true,
             PickOrderId = orderId,
-            Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ){stationMsg}"
+            Status = "WAITING",
+            Message = $"สร้าง Pick Order '{orderId}' สำเร็จ ({grouped.Count} รายการ) — รอ robot จัดส่ง pallet"
         });
     }
 
@@ -658,7 +942,7 @@ public class PickingService(WmsDbContext db) : IPickingService
             .Include(d => d.PickOrder)
             .Include(d => d.Subs)
             .Where(d => d.PartId == partId
-                     && d.PickOrder!.Status == "OPEN"
+                     && (d.PickOrder!.Status == "WAITING" || d.PickOrder!.Status == "PICKING")
                      && d.RequiredQty > d.Subs.Sum(s => s.AllocatedQty))
             .OrderBy(d => d.PickOrder!.CreatedAt)
             .ToListAsync();

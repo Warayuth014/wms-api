@@ -17,6 +17,23 @@ public class PickingController(IPickingService service) : ControllerBase
     public async Task<IActionResult> GetPickOrder(string pickOrderId) =>
         this.ToActionResult(await service.GetPickOrderAsync(pickOrderId));
 
+    // ── New flow: 2-page picking entry ─────────────────
+    [HttpGet("orders-list")]
+    public async Task<IActionResult> ListOrders() =>
+        this.ToActionResult(await service.ListOrdersAsync());
+
+    [HttpGet("orders/{pickOrderId}/detail")]
+    public async Task<IActionResult> GetOrderDetail(string pickOrderId) =>
+        this.ToActionResult(await service.GetOrderDetailAsync(pickOrderId));
+
+    [HttpPost("orders/{pickOrderId}/notify-arrival")]
+    public async Task<IActionResult> NotifyArrival(string pickOrderId) =>
+        this.ToActionResult(await service.NotifyArrivalAsync(pickOrderId));
+
+    [HttpGet("suggest-dest-pallets")]
+    public async Task<IActionResult> SuggestDestPallets([FromQuery] string? pickOrderId) =>
+        this.ToActionResult(await service.SuggestDestPalletsAsync(pickOrderId));
+
     [HttpPost("assign-station")]
     public async Task<IActionResult> AssignStation([FromBody] AssignPickStationRequest req) =>
         this.ToActionResult(await service.AssignStationAsync(req));

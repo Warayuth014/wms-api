@@ -1,5 +1,75 @@
 namespace WmsApi.DTOs;
 
+// ── Order list page (WAITING + PICKING) ───────────────
+public record PickOrderListItem(
+    string PickOrderId,
+    string Status,             // WAITING | PICKING
+    string Owner,
+    string? CustomerOrderId,
+    int PartCount,             // distinct parts
+    int TotalRequiredQty,      // sum of all PickOrderDetail.RequiredQty
+    int PalletCount,           // distinct source pallets
+    DateTime CreatedAt
+);
+
+// ── Order detail page (pallets + parts) ───────────────
+public record PickOrderDetailFull(
+    string PickOrderId,
+    string Status,
+    string Owner,
+    string? CustomerOrderId,
+    DateTime CreatedAt,
+    List<PickOrderPalletInfo> Pallets,
+    List<PickOrderPartInfo> Parts
+);
+
+public record PickOrderPalletInfo(
+    string PalletId,
+    string PalletStatus,        // STORED | PICKING
+    string? StationId,
+    string? StationName,
+    int PartCount,
+    int TotalQty,
+    List<PickOrderPalletPartInfo> Parts   // parts ที่อยู่บน pallet นี้
+);
+
+public record PickOrderPalletPartInfo(
+    string PartId,
+    string Owner,
+    string Brand,
+    string ItemDesc,
+    string? ImageUrl,
+    int AllocatedQty,   // จำนวนที่จะ pick จาก pallet นี้
+    int PickedQty,
+    string Status
+);
+
+public record PickOrderPartInfo(
+    string PartId,
+    string Owner,
+    string Brand,
+    string ItemDesc,
+    string? ImageUrl,
+    int RequiredQty,
+    int ReservedQty,
+    int RemainingQty,
+    string Status
+);
+
+// ── Notify Arrival (Robot simulator) ──────────────────
+public record NotifyArrivalResponse(
+    string PickOrderId,
+    string Status,              // PICKING after success
+    List<NotifyArrivalAssignment> Assignments,
+    string Message
+);
+
+public record NotifyArrivalAssignment(
+    string PalletId,
+    string? StationId,
+    string Outcome              // ASSIGNED | ALREADY_AT_STATION | NO_FREE_STATION
+);
+
 public record RequestFromAsrsRequest(
     string PalletId,
     string OperatorId

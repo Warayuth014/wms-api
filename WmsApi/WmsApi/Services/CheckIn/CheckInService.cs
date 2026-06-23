@@ -482,7 +482,9 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         else
         {
             pickOrderIds = await db.PickOrderDetails
-                .Where(d => d.PickOrder!.Status == "OPEN" || d.PickOrder!.Status == "COMPLETED")
+                .Where(d => d.PickOrder!.Status == "WAITING"
+                         || d.PickOrder!.Status == "PICKING"
+                         || d.PickOrder!.Status == "COMPLETED")
                 .Join(db.Parts, d => d.PartId, p => p.PartId, (d, p) => new { d.PickOrderId, p.Owner })
                 .Where(x => x.Owner == owner)
                 .Select(x => x.PickOrderId)
