@@ -4,7 +4,6 @@ public record ScanPalletForUnloadResponse(
     string PalletId,
     string Type,
     string Status,
-    bool NeedsLabeling,
     List<UnloadItemResponse> Items,
     string Message
 );
@@ -19,11 +18,6 @@ public record UnloadItemResponse(
     string? ExpiredDate,
     int Qty,
     string Condition
-);
-
-public record ConfirmLabelingRequest(
-    string PalletId,
-    string OperatorId
 );
 
 public record OpenUnloadRequest(

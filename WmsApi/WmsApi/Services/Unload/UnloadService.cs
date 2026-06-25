@@ -37,40 +37,13 @@ public class UnloadService(WmsDbContext db) : IUnloadService
             Condition: l.Condition
         )).ToList();
 
-        var needsLabeling = pallet.Type == "PW";
-
         return ServiceResult.Ok(new ScanPalletForUnloadResponse(
             PalletId: pallet.PalletId,
             Type: pallet.Type ?? "-",
             Status: pallet.Status,
-            NeedsLabeling: needsLabeling,
             Items: items,
-            Message: needsLabeling
-                ? "⚠️ Pallet ยังไม่ติดสติ๊กเกอร์ กรุณาส่งไปจุด Labeling ก่อน"
-                : "✅ Pallet พร้อม unload"
+            Message: "✅ Pallet พร้อม unload"
         ));
-    }
-
-    public async Task<ServiceResult> ConfirmLabelingAsync(ConfirmLabelingRequest req)
-    {
-        var pallet = await db.Pallets.FindAsync(req.PalletId);
-        if (pallet is null)
-            return ServiceResult.NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
-
-        if (pallet.Status != "PW")
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"Pallet is not PW status (current: {pallet.Status})."));
-        }
-
-        pallet.Type = "FG";
-        pallet.Status = "FG";
-        pallet.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        return ServiceResult.Ok(new ApiSuccess(true,
-            $"Pallet '{req.PalletId}' changed to FG ✅ Ready to unload."));
     }
 
     public async Task<ServiceResult> OpenSessionAsync(OpenUnloadRequest req)
@@ -93,6 +66,16 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                     $"Pallet '{req.PalletId}' is UNLOADING but no active session found."));
             }
 
+            // ดึง Condition จริงต่อ Part จาก ReceiptLines บน pallet เดียวกัน
+            // (UnloadLines ไม่เก็บ Condition — เคย hardcode "NORMAL" ทำให้ StatusBadge ฝั่ง Flutter โชว์ผิด)
+            var receiptConditions = await db.ReceiptLines
+                .Where(l => l.PalletId == req.PalletId)
+                .Select(l => new { l.PartId, l.Condition })
+                .ToListAsync();
+            var conditionMap = receiptConditions
+                .GroupBy(x => x.PartId)
+                .ToDictionary(g => g.Key, g => g.First().Condition);
+
             var existingItems = existing.UnloadLines.Select(l => new UnloadItemResponse(
                 PartId: l.PartId,
                 Owner: l.Part!.Owner,
@@ -102,7 +85,7 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                 LotNumber: l.LotNumber,
                 ExpiredDate: l.ExpiredDate?.ToString("yyyy-MM-dd"),
                 Qty: l.QtyUnloaded,
-                Condition: "NORMAL"
+                Condition: conditionMap.GetValueOrDefault(l.PartId, "FG")
             )).ToList();
 
             var confirmedPartIds = existing.UnloadLines

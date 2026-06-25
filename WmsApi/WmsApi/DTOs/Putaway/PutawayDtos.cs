@@ -66,8 +66,7 @@ public record PreworkReturnPalletRequest(
 
 public record ReturnPalletToAsisRequest(
     string PalletId,
-    int? SessionId,
-    string OperatorId
+    int? SessionId
 );
 
 public record AsisDispatchRequest(

@@ -16,8 +16,4 @@ public class BasketController(IBasketService service) : ControllerBase
     [HttpPost("load")]
     public async Task<IActionResult> LoadToBasket([FromBody] LoadToBasketRequest req) =>
         this.ToActionResult(await service.LoadToBasketAsync(req));
-
-    [HttpGet("{basketId}")]
-    public async Task<IActionResult> GetBasket(string basketId) =>
-        this.ToActionResult(await service.GetBasketAsync(basketId));
 }

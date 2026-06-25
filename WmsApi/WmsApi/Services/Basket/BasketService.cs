@@ -179,38 +179,4 @@ public class BasketService(WmsDbContext db) : IBasketService
         ));
     }
 
-    // ── ดู Basket detail ──────────
-    public async Task<ServiceResult> GetBasketAsync(string basketId)
-    {
-        var bid = basketId.Trim().ToUpper();
-        var basket = await db.Baskets
-            .Include(b => b.Lines).ThenInclude(l => l.Part)
-            .FirstOrDefaultAsync(b => b.BasketId == bid);
-
-        if (basket is null)
-            return ServiceResult.NotFound(new ApiError($"ไม่พบ Basket '{bid}'"));
-
-        var lines = basket.Lines
-            .Where(l => l.Status == "LOADED")
-            .Select(l => new BasketLineResponse(
-                LineId: l.LineId,
-                PartId: l.PartId,
-                Owner: l.Part?.Owner ?? string.Empty,
-                Brand: l.Part?.Brand ?? string.Empty,
-                ItemDesc: l.Part?.ItemDesc ?? string.Empty,
-                ImageUrl: l.Part?.ImageUrl,
-                QtyLoaded: l.QtyLoaded,
-                Status: l.Status
-            )).ToList();
-
-        return ServiceResult.Ok(new BasketResponse(
-            BasketId: basket.BasketId,
-            Label: basket.Label,
-            Zone: basket.Zone,
-            Destination: basket.Destination,
-            Status: basket.Status,
-            CreatedAt: basket.CreatedAt,
-            Lines: lines
-        ));
-    }
 }

@@ -13,10 +13,6 @@ public class UnloadController(IUnloadService service) : ControllerBase
     public async Task<IActionResult> ScanPallet(string palletId) =>
         this.ToActionResult(await service.ScanPalletAsync(palletId));
 
-    [HttpPost("confirm-labeling")]
-    public async Task<IActionResult> ConfirmLabeling([FromBody] ConfirmLabelingRequest req) =>
-        this.ToActionResult(await service.ConfirmLabelingAsync(req));
-
     [HttpPost("open-session")]
     public async Task<IActionResult> OpenSession([FromBody] OpenUnloadRequest req) =>
         this.ToActionResult(await service.OpenSessionAsync(req));

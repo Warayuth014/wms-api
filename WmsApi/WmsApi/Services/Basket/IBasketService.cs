@@ -7,5 +7,4 @@ public interface IBasketService
 {
     Task<ServiceResult> GetUnloadedItemsAsync();
     Task<ServiceResult> LoadToBasketAsync(LoadToBasketRequest req);
-    Task<ServiceResult> GetBasketAsync(string basketId);
 }

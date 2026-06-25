@@ -39,25 +39,3 @@ public record LoadToBasketResponse(
     string BasketLabel,
     string Message
 );
-
-// ── Basket info ──────────
-public record BasketResponse(
-    string BasketId,
-    string Label,
-    string? Zone,
-    string? Destination,
-    string Status,
-    DateTime CreatedAt,
-    List<BasketLineResponse> Lines
-);
-
-public record BasketLineResponse(
-    int LineId,
-    string PartId,
-    string Owner,
-    string Brand,
-    string ItemDesc,
-    string? ImageUrl,
-    int QtyLoaded,
-    string Status
-);
