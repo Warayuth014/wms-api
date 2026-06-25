@@ -14,7 +14,6 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     // receiving
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<POItem> POItems { get; set; }
-    public DbSet<ReceivingSession> ReceivingSessions { get; set; }
     public DbSet<ReceiptLine> ReceiptLines { get; set; }
 
     // unload

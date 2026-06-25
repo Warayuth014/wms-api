@@ -13,11 +13,13 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         if (string.IsNullOrWhiteSpace(poId))
             return ServiceResult.BadRequest(new ApiError("กรุณาระบุ PO ID"));
 
+        var normalizedPoId = poId.Trim().ToUpper();
+
         var po = await db.PurchaseOrders
             .Include(p => p.Supplier)
             .Include(p => p.Items)
                 .ThenInclude(i => i.Part)
-            .FirstOrDefaultAsync(p => p.POId == poId.Trim().ToUpper());
+            .FirstOrDefaultAsync(p => p.POId == normalizedPoId);
 
         if (po is null)
         {
@@ -26,107 +28,27 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 "กรุณาตรวจสอบ PO ID อีกครั้ง"));
         }
 
+        var poItemsDict = po.Items.ToDictionary(i => i.PartId);
+
+        // ── PendingLines: line ที่รับแล้วแต่ยังไม่ผูก pallet (สำหรับ resume) ──
+        var pendingLines = await db.ReceiptLines
+            .Include(l => l.Part)
+            .Where(l => l.POId == normalizedPoId && l.Status == "PENDING")
+            .OrderBy(l => l.ReceivedAt)
+            .ToListAsync();
+
+        var pendingLineDtos = pendingLines
+            .Select(l => ToScanReceiptPartResponse(l, poItemsDict.GetValueOrDefault(l.PartId), "Resumed"))
+            .ToList();
+
         return ServiceResult.Ok(new POResponse(
             POId: po.POId,
             SupplierId: po.SupplierId,
             SupplierName: po.Supplier!.FullName,
             Status: po.Status,
             CreatedAt: po.CreatedAt,
-            Items: po.Items.Select(ToPOItemResponse).ToList()
-        ));
-    }
-
-    public async Task<ServiceResult> OpenSessionAsync(OpenReceivingRequest req)
-    {
-        if (string.IsNullOrWhiteSpace(req.POId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ PO ID"));
-
-        if (string.IsNullOrWhiteSpace(req.OperatorId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Operator ID"));
-
-        // ── Resume: มี OPEN session อยู่แล้ว → คืน session เดิมพร้อม pendingLines ──
-        var existing = await db.ReceivingSessions
-            .Include(s => s.PurchaseOrder)
-                .ThenInclude(p => p!.Supplier)
-            .Include(s => s.PurchaseOrder)
-                .ThenInclude(p => p!.Items)
-                    .ThenInclude(i => i.Part)
-            .Include(s => s.Lines)
-                .ThenInclude(l => l.Part)
-            .FirstOrDefaultAsync(s => s.POId == req.POId && s.Status == "OPEN");
-
-        if (existing is not null)
-        {
-            var existingPo = existing.PurchaseOrder!;
-            var poItemsDict = existingPo.Items.ToDictionary(i => i.PartId);
-            var pendingLines = existing.Lines
-                .Where(l => l.Status == "PENDING")
-                .Select(l => ToScanReceiptPartResponse(l, poItemsDict.GetValueOrDefault(l.PartId), "Resumed"))
-                .ToList();
-
-            return ServiceResult.Ok(new OpenReceivingResponse(
-                SessionId: existing.SessionId,
-                POId: existingPo.POId,
-                SupplierName: existingPo.Supplier!.FullName,
-                Status: existing.Status,
-                PendingLines: pendingLines
-            ));
-        }
-
-        // ── Create new ──
-        var po = await db.PurchaseOrders
-            .Include(p => p.Supplier)
-            .Include(p => p.Items)
-                .ThenInclude(i => i.Part)
-            .FirstOrDefaultAsync(p => p.POId == req.POId);
-
-        if (po is null)
-        {
-            return ServiceResult.NotFound(new ApiError(
-                $"ไม่พบ PO '{req.POId}' ในระบบ",
-                "กรุณาตรวจสอบ PO ID อีกครั้ง"));
-        }
-
-        if (po.Status == "RECEIVED")
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"PO '{req.POId}' รับสินค้าครบแล้ว ไม่สามารถเปิด Session ใหม่ได้"));
-        }
-
-        var operator_ = await db.Users.FindAsync(req.OperatorId);
-        if (operator_ is null)
-        {
-            return ServiceResult.NotFound(new ApiError(
-                $"ไม่พบผู้ใช้ '{req.OperatorId}' ในระบบ",
-                "กรุณาล็อกอินใหม่อีกครั้ง"));
-        }
-
-        if (!operator_.IsActive)
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"ผู้ใช้ '{req.OperatorId}' ถูกระงับการใช้งาน"));
-        }
-
-        var session = new ReceivingSession
-        {
-            POId = req.POId,
-            OperatorId = req.OperatorId,
-            Status = "OPEN",
-            OpenedAt = DateTime.UtcNow
-        };
-
-        db.ReceivingSessions.Add(session);
-        po.Status = "RECEIVING";
-        po.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        return ServiceResult.Ok(new OpenReceivingResponse(
-            SessionId: session.SessionId,
-            POId: po.POId,
-            SupplierName: po.Supplier!.FullName,
-            Status: session.Status,
-            PendingLines: []
+            Items: po.Items.Select(ToPOItemResponse).ToList(),
+            PendingLines: pendingLineDtos
         ));
     }
 
@@ -207,14 +129,27 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             return ServiceResult.BadRequest(new ApiError("Serial Number ซ้ำในรายการที่สแกน"));
         }
 
-        var session = await db.ReceivingSessions.FindAsync(req.SessionId);
-        if (session is null)
-            return ServiceResult.BadRequest(new ApiError($"ไม่พบ Session ID {req.SessionId}"));
+        var po = await db.PurchaseOrders.FindAsync(req.POId);
+        if (po is null)
+            return ServiceResult.NotFound(new ApiError($"ไม่พบ PO '{req.POId}' ในระบบ"));
 
-        if (session.Status != "OPEN")
+        if (po.Status == "RECEIVED")
         {
             return ServiceResult.BadRequest(new ApiError(
-                $"Session {req.SessionId} ถูกปิดแล้ว ไม่สามารถสแกน Part ได้"));
+                $"PO '{req.POId}' รับสินค้าครบแล้ว ไม่สามารถสแกนเพิ่มได้"));
+        }
+
+        var operator_ = await db.Users.FindAsync(req.OperatorId);
+        if (operator_ is null)
+        {
+            return ServiceResult.NotFound(new ApiError(
+                $"ไม่พบผู้ใช้ '{req.OperatorId}' ในระบบ"));
+        }
+
+        if (!operator_.IsActive)
+        {
+            return ServiceResult.BadRequest(new ApiError(
+                $"ผู้ใช้ '{req.OperatorId}' ถูกระงับการใช้งาน"));
         }
 
         var poItem = await db.POItems
@@ -260,7 +195,7 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         }
 
         var existingPending = await db.ReceiptLines
-            .FirstOrDefaultAsync(l => l.SessionId == req.SessionId
+            .FirstOrDefaultAsync(l => l.POId == req.POId
                                    && l.PartId == req.PartId
                                    && l.Status == "PENDING");
 
@@ -285,7 +220,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         var line = new ReceiptLine
         {
-            SessionId = req.SessionId,
             POId = req.POId,
             PartId = req.PartId,
             QtyReceived = req.QtyReceived,
@@ -301,6 +235,13 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         poItem.QtyReceived = newTotal;
         poItem.QtyRemaining = remaining;
         poItem.Status = isOver ? "OVER" : poStatus;
+
+        // เริ่มรับสินค้าครั้งแรก → PO=RECEIVING
+        if (po.Status == "OPEN")
+        {
+            po.Status = "RECEIVING";
+            po.UpdatedAt = DateTime.UtcNow;
+        }
 
         await db.SaveChangesAsync();
 
@@ -340,16 +281,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         {
             return ServiceResult.BadRequest(new ApiError(
                 $"ประเภท Pallet '{req.PalletType}' ไม่ถูกต้อง (ต้องเป็น FG หรือ PW)"));
-        }
-
-        var session = await db.ReceivingSessions.FindAsync(req.SessionId);
-        if (session is null)
-            return ServiceResult.BadRequest(new ApiError($"ไม่พบ Session ID {req.SessionId}"));
-
-        if (session.Status != "OPEN")
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"Session {req.SessionId} ถูกปิดแล้ว ไม่สามารถผูก Pallet ได้"));
         }
 
         var pallet = await db.Pallets.FindAsync(req.PalletId);
@@ -392,16 +323,14 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         var lines = await db.ReceiptLines
             .Include(l => l.Part)
-            .Where(l => req.LineIds.Contains(l.LineId)
-                     && l.SessionId == req.SessionId
-                     && l.Status == "PENDING")
+            .Where(l => req.LineIds.Contains(l.LineId) && l.Status == "PENDING")
             .ToListAsync();
 
         if (lines.Count == 0)
         {
             return ServiceResult.BadRequest(new ApiError(
                 "ไม่พบรายการที่รอผูก Pallet ตาม Line ID ที่ระบุ",
-                "อาจถูกผูกไปแล้ว หรือ Line ID ไม่ตรงกับ Session นี้"));
+                "อาจถูกผูกไปแล้ว หรือ Line ID ไม่ถูกต้อง"));
         }
 
         var distinctConditions = lines.Select(l => l.Condition).Distinct().ToList();
@@ -499,20 +428,22 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         await db.SaveChangesAsync();
 
+        // ── Auto-close: ถ้า PO นี้รับครบ + ไม่มี PENDING line เหลือ → PO=RECEIVED ──
         var autoClosed = false;
         string? poStatus = null;
         string? closeMessage = null;
 
-        var fullSession = await db.ReceivingSessions
-            .Include(s => s.PurchaseOrder)
-                .ThenInclude(p => p!.Items)
-            .Include(s => s.Lines)
-            .FirstOrDefaultAsync(s => s.SessionId == req.SessionId);
-
-        if (fullSession is not null)
+        var distinctPoIds = lines.Select(l => l.POId).Distinct().ToList();
+        foreach (var poId in distinctPoIds)
         {
-            var hasPendingLines = fullSession.Lines.Any(l => l.Status == "PENDING");
-            var po = fullSession.PurchaseOrder!;
+            var po = await db.PurchaseOrders
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.POId == poId);
+
+            if (po is null) continue;
+
+            var hasPendingLines = await db.ReceiptLines
+                .AnyAsync(l => l.POId == poId && l.Status == "PENDING");
             var allItemsReceived = po.Items.All(i => i.Status is "RECEIVED" or "OVER");
 
             if (!hasPendingLines && allItemsReceived)
@@ -524,9 +455,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 po.Status = hasPartial ? "PARTIAL" : "RECEIVED";
                 po.UpdatedAt = DateTime.UtcNow;
 
-                fullSession.Status = "CLOSED";
-                fullSession.ClosedAt = DateTime.UtcNow;
-
                 await db.SaveChangesAsync();
 
                 autoClosed = true;
@@ -537,6 +465,8 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 closeMessage = po.Status == "RECEIVED"
                     ? $"PO '{po.POId}' รับสินค้าครบแล้ว"
                     : $"PO '{po.POId}' รับบางส่วน ({received}/{total} รายการ)";
+
+                break; // assign-pallet ปัจจุบันรองรับ line จาก PO เดียว (constraint Owner/condition กรองไว้แล้ว)
             }
         }
 
@@ -563,7 +493,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         var result = lines.Select(l => new PendingPalletLineResponse(
             LineId: l.LineId,
-            SessionId: l.SessionId,
             POId: l.POId,
             PartId: l.PartId,
             Owner: l.Part!.Owner,
@@ -577,68 +506,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         )).ToList();
 
         return ServiceResult.Ok(new PendingPalletLinesResponse(Count: result.Count, Lines: result));
-    }
-
-    public async Task<ServiceResult> CloseSessionAsync(int sessionId)
-    {
-        var session = await db.ReceivingSessions
-            .Include(s => s.PurchaseOrder)
-                .ThenInclude(p => p!.Items)
-                    .ThenInclude(i => i.Part)
-            .Include(s => s.Lines)
-            .FirstOrDefaultAsync(s => s.SessionId == sessionId);
-
-        if (session is null)
-            return ServiceResult.NotFound(new ApiError($"ไม่พบ Session ID {sessionId}"));
-
-        if (session.Status == "CLOSED")
-            return ServiceResult.BadRequest(new ApiError($"Session {sessionId} ปิดไปแล้ว"));
-
-        var pendingCount = session.Lines.Count(l => l.Status == "PENDING");
-        if (pendingCount > 0)
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"ยังมีสินค้า {pendingCount} รายการที่ยังไม่ได้ผูก Pallet",
-                "กรุณาผูก Pallet ให้ครบก่อนปิด Session"));
-        }
-
-        var po = session.PurchaseOrder!;
-        var items = po.Items.ToList();
-        var total = items.Count;
-        var received = items.Count(i => i.Status == "RECEIVED" || i.Status == "OVER");
-        var hasPartial = items.Any(i => i.Status == "PARTIAL" || i.Status == "PENDING");
-
-        foreach (var item in items)
-            item.QtyRemaining = Math.Max(0, item.QtyOrdered - item.QtyReceived);
-
-        po.Status = hasPartial ? "PARTIAL" : "RECEIVED";
-        po.UpdatedAt = DateTime.UtcNow;
-
-        session.Status = "CLOSED";
-        session.ClosedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        var partialItems = items
-            .Where(i => i.QtyRemaining > 0)
-            .Select(i => new PartialItemSummary(
-                PartId: i.PartId,
-                ItemDesc: i.Part!.ItemDesc,
-                QtyOrdered: i.QtyOrdered,
-                QtyReceived: i.QtyReceived,
-                QtyRemaining: i.QtyRemaining
-            )).ToList();
-
-        return ServiceResult.Ok(new CloseReceivingResponse(
-            Success: true,
-            POStatus: po.Status,
-            Message: po.Status == "RECEIVED"
-                ? $"PO '{po.POId}' รับสินค้าครบแล้ว"
-                : $"PO '{po.POId}' รับบางส่วน ({received}/{total} รายการ) ยังขาดอีก {partialItems.Count} ชนิด",
-            TotalParts: total,
-            ReceivedParts: received,
-            PartialItems: partialItems
-        ));
     }
 
     private static POItemResponse ToPOItemResponse(POItem item) =>

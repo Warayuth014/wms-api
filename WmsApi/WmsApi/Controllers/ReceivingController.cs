@@ -17,10 +17,6 @@ public class ReceivingController(IReceivingService service) : ControllerBase
     public async Task<IActionResult> ValidateSerial([FromQuery] string partId, [FromQuery] string serialNo) =>
         this.ToActionResult(await service.ValidateSerialAsync(partId, serialNo));
 
-    [HttpPost("open-session")]
-    public async Task<IActionResult> OpenSession([FromBody] OpenReceivingRequest req) =>
-        this.ToActionResult(await service.OpenSessionAsync(req));
-
     [HttpPost("scan-part")]
     public async Task<IActionResult> ScanPart([FromBody] ScanReceiptPartRequest req) =>
         this.ToActionResult(await service.ScanPartAsync(req));
@@ -32,8 +28,4 @@ public class ReceivingController(IReceivingService service) : ControllerBase
     [HttpGet("pending-pallet-lines")]
     public async Task<IActionResult> GetPendingPalletLines() =>
         this.ToActionResult(await service.GetPendingPalletLinesAsync());
-
-    [HttpPost("close-session/{sessionId}")]
-    public async Task<IActionResult> CloseSession(int sessionId) =>
-        this.ToActionResult(await service.CloseSessionAsync(sessionId));
 }

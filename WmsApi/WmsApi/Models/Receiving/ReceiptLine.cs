@@ -8,7 +8,6 @@ public class ReceiptLine
 {
     [Key]
     public int LineId { get; set; }
-    public int SessionId { get; set; }
     public string POId { get; set; } = string.Empty;
     public string PartId { get; set; } = string.Empty;
     public string? PalletId { get; set; }
@@ -21,8 +20,8 @@ public class ReceiptLine
     public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    [ForeignKey(nameof(SessionId))]
-    public ReceivingSession? Session { get; set; }
+    [ForeignKey(nameof(POId))]
+    public PurchaseOrder? PurchaseOrder { get; set; }
 
     [ForeignKey(nameof(PartId))]
     public Part? Part { get; set; }

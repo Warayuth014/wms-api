@@ -9,10 +9,10 @@ public class ReceiptLineConfiguration : IEntityTypeConfiguration<ReceiptLine>
     public void Configure(EntityTypeBuilder<ReceiptLine> builder)
     {
         builder
-            .HasOne(x => x.Session)
-            .WithMany(x => x.Lines)
-            .HasForeignKey(x => x.SessionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.PurchaseOrder)
+            .WithMany()
+            .HasForeignKey(x => x.POId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder
             .HasOne(x => x.Part)

@@ -6,7 +6,8 @@ public record POResponse(
     string SupplierName,
     string Status,
     DateTime CreatedAt,
-    List<POItemResponse> Items
+    List<POItemResponse> Items,
+    List<ScanReceiptPartResponse> PendingLines
 );
 
 public record POItemResponse(
@@ -25,21 +26,7 @@ public record POItemResponse(
     string? ExpiredDate
 );
 
-public record OpenReceivingRequest(
-    string POId,
-    string OperatorId
-);
-
-public record OpenReceivingResponse(
-    int SessionId,
-    string POId,
-    string SupplierName,
-    string Status,
-    List<ScanReceiptPartResponse> PendingLines
-);
-
 public record ScanReceiptPartRequest(
-    int SessionId,
     string POId,
     string PartId,
     int QtyReceived,
@@ -70,7 +57,6 @@ public record ScanReceiptPartResponse(
 );
 
 public record AssignPalletRequest(
-    int SessionId,
     string PalletId,
     string PalletType,
     string OperatorId,
@@ -89,26 +75,8 @@ public record AssignPalletResponse(
     string? CloseMessage = null
 );
 
-public record PartialItemSummary(
-    string PartId,
-    string ItemDesc,
-    int QtyOrdered,
-    int QtyReceived,
-    int QtyRemaining
-);
-
-public record CloseReceivingResponse(
-    bool Success,
-    string POStatus,
-    string Message,
-    int TotalParts,
-    int ReceivedParts,
-    List<PartialItemSummary> PartialItems
-);
-
 public record PendingPalletLineResponse(
     int LineId,
-    int SessionId,
     string POId,
     string PartId,
     string Owner,
