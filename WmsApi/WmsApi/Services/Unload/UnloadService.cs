@@ -8,44 +8,6 @@ namespace WmsApi.Services.Unload;
 
 public class UnloadService(WmsDbContext db) : IUnloadService
 {
-    public async Task<ServiceResult> ScanPalletAsync(string palletId)
-    {
-        var pallet = await db.Pallets.FindAsync(palletId);
-        if (pallet is null)
-            return ServiceResult.NotFound(new ApiError($"Pallet '{palletId}' not found."));
-
-        if (pallet.Status is not ("REPLENISH" or "UNLOADING"))
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"Pallet '{palletId}' ไม่พร้อม Unload (สถานะ: {pallet.Status}) — ต้องเป็น REPLENISH เท่านั้น"));
-        }
-
-        var lines = await db.ReceiptLines
-            .Include(l => l.Part)
-            .Where(l => l.PalletId == palletId && l.Status == "PALLETIZED")
-            .ToListAsync();
-
-        var items = lines.Select(l => new UnloadItemResponse(
-            PartId: l.PartId,
-            Owner: l.Part!.Owner,
-            Brand: l.Part!.Brand,
-            ItemDesc: l.Part!.ItemDesc,
-            ImageUrl: l.Part!.ImageUrl,
-            LotNumber: l.LotNumber,
-            ExpiredDate: l.ExpiredDate?.ToString("yyyy-MM-dd"),
-            Qty: l.QtyReceived,
-            Condition: l.Condition
-        )).ToList();
-
-        return ServiceResult.Ok(new ScanPalletForUnloadResponse(
-            PalletId: pallet.PalletId,
-            Type: pallet.Type ?? "-",
-            Status: pallet.Status,
-            Items: items,
-            Message: "✅ Pallet พร้อม unload"
-        ));
-    }
-
     public async Task<ServiceResult> OpenSessionAsync(OpenUnloadRequest req)
     {
         var pallet = await db.Pallets.FindAsync(req.PalletId);

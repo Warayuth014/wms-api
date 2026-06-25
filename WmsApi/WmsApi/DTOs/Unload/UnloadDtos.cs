@@ -1,13 +1,5 @@
 namespace WmsApi.DTOs;
 
-public record ScanPalletForUnloadResponse(
-    string PalletId,
-    string Type,
-    string Status,
-    List<UnloadItemResponse> Items,
-    string Message
-);
-
 public record UnloadItemResponse(
     string PartId,
     string Owner,

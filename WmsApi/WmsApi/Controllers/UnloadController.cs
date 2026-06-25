@@ -9,10 +9,6 @@ namespace WmsApi.Controllers;
 [Route("api/unload")]
 public class UnloadController(IUnloadService service) : ControllerBase
 {
-    [HttpGet("scan-pallet/{palletId}")]
-    public async Task<IActionResult> ScanPallet(string palletId) =>
-        this.ToActionResult(await service.ScanPalletAsync(palletId));
-
     [HttpPost("open-session")]
     public async Task<IActionResult> OpenSession([FromBody] OpenUnloadRequest req) =>
         this.ToActionResult(await service.OpenSessionAsync(req));
