@@ -135,8 +135,10 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
         }
 
         var isPWStation = req.StationId.StartsWith("PW-STN", StringComparison.OrdinalIgnoreCase);
-        if (isPWStation && pallet.Type == "PW" && req.ConvertToFG)
+        var convertedPWtoFG = isPWStation && pallet.Type == "PW";
+        if (convertedPWtoFG)
         {
+            // ส่ง PW pallet ออกจาก PW-Station = prework เสร็จแล้ว → convert PW→FG อัตโนมัติ
             pallet.Type = "FG";
 
             var linesOnPallet = await db.ReceiptLines
@@ -251,7 +253,7 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
             destination = dest,
         });
 
-        var convertMsg = isPWStation && req.ConvertToFG ? " (PW→FG converted)" : "";
+        var convertMsg = convertedPWtoFG ? " (PW→FG converted)" : "";
         var wrappingMsg = req.WrappingRequired ? " (ผ่าน Wrapping Machine)" : "";
         var destLabel = dest switch
         {
@@ -378,122 +380,6 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
         }).ToList();
 
         return ServiceResult.Ok(new { stations = result });
-    }
-
-    public async Task<ServiceResult> GetPreworkPalletsAsync()
-    {
-        var pallets = await db.Pallets
-            .Where(p => p.Status == "PREWORK")
-            .OrderBy(p => p.UpdatedAt)
-            .ToListAsync();
-
-        var palletIds = pallets.Select(p => p.PalletId).ToList();
-
-        var palletItems = await db.ReceiptLines
-            .Include(l => l.Part)
-            .Where(l => l.PalletId != null && palletIds.Contains(l.PalletId) && l.Status == "PALLETIZED")
-            .GroupBy(l => l.PalletId)
-            .Select(g => new
-            {
-                PalletId = g.Key,
-                ItemCount = g.Count(),
-                TotalQty = g.Sum(l => l.QtyReceived),
-                Items = g.Select(l => new
-                {
-                    l.PartId,
-                    l.Part!.Owner,
-                    l.Part!.Brand,
-                    l.Part!.ItemDesc,
-                    l.Part!.ImageUrl,
-                    l.LotNumber,
-                    ExpiredDate = l.ExpiredDate != null ? l.ExpiredDate.Value.ToString("yyyy-MM-dd") : null,
-                    Qty = l.QtyReceived,
-                    l.Condition
-                }).ToList()
-            })
-            .ToListAsync();
-
-        var itemsDict = palletItems.ToDictionary(p => p.PalletId!);
-
-        var result = pallets.Select(p =>
-        {
-            var info = itemsDict.GetValueOrDefault(p.PalletId);
-            return new
-            {
-                p.PalletId,
-                p.Type,
-                p.Status,
-                ItemCount = info?.ItemCount ?? 0,
-                TotalQty = info?.TotalQty ?? 0,
-                Items = info?.Items ?? []
-            };
-        }).ToList();
-
-        return ServiceResult.Ok(new { items = result });
-    }
-
-    public async Task<ServiceResult> PreworkReceiveAsync(PreworkReceiveRequest req)
-    {
-        var pallet = await db.Pallets.FindAsync(req.PalletId);
-        if (pallet is null)
-            return ServiceResult.NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
-
-        if (pallet.Status is not ("PREWORK" or "IN_TRANSIT"))
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"Pallet '{req.PalletId}' สถานะ '{pallet.Status}' — ต้องเป็น PREWORK หรือ IN_TRANSIT"));
-        }
-
-        var lines = await db.ReceiptLines
-            .Include(l => l.Part)
-            .Where(l => l.PalletId == req.PalletId && l.Status == "PALLETIZED")
-            .ToListAsync();
-
-        if (lines.Count == 0)
-            return ServiceResult.BadRequest(new ApiError($"Pallet '{req.PalletId}' ไม่มีสินค้าบน Pallet"));
-
-        var items = lines.Select(l => new PreworkReceiveItemResponse(
-            PartId: l.PartId,
-            Owner: l.Part!.Owner,
-            Brand: l.Part!.Brand,
-            ItemDesc: l.Part!.ItemDesc,
-            ImageUrl: l.Part!.ImageUrl,
-            LotNumber: l.LotNumber,
-            ExpiredDate: l.ExpiredDate?.ToString("yyyy-MM-dd"),
-            Qty: l.QtyReceived,
-            Condition: l.Condition
-        )).ToList();
-
-        foreach (var line in lines)
-        {
-            line.Status = "PREWORK_RECEIVED";
-            line.PalletId = null;
-            line.UpdatedAt = DateTime.UtcNow;
-        }
-
-        var putaway = await db.PutawaySessions
-            .Where(p => p.PalletId == req.PalletId && p.Status == "AGV_DISPATCHED")
-            .OrderByDescending(p => p.CreatedAt)
-            .FirstOrDefaultAsync();
-        if (putaway is not null)
-        {
-            putaway.Status = "COMPLETED";
-            putaway.CompletedAt = DateTime.UtcNow;
-        }
-
-        pallet.Status = "AVAILABLE";
-        pallet.Location = req.StationId.ToUpper();
-        pallet.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-
-        return ServiceResult.Ok(new PreworkReceiveResponse(
-            Success: true,
-            PalletId: req.PalletId,
-            StationId: req.StationId.ToUpper(),
-            Items: items,
-            Message: $"✅ ตัดยอด {items.Count} รายการออกจาก Pallet '{req.PalletId}' แล้ว"
-        ));
     }
 
     public async Task<ServiceResult> PreworkReturnPalletAsync(PreworkReturnPalletRequest req)

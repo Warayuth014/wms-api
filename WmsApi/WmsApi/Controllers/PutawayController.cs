@@ -25,14 +25,6 @@ public class PutawayController(IPutawayService service) : ControllerBase
     public async Task<IActionResult> GetPreworkStationStatus() =>
         this.ToActionResult(await service.GetPreworkStationStatusAsync());
 
-    [HttpGet("prework-pallets")]
-    public async Task<IActionResult> GetPreworkPallets() =>
-        this.ToActionResult(await service.GetPreworkPalletsAsync());
-
-    [HttpPost("prework-receive")]
-    public async Task<IActionResult> PreworkReceive([FromBody] PreworkReceiveRequest req) =>
-        this.ToActionResult(await service.PreworkReceiveAsync(req));
-
     [HttpPost("prework-return-pallet")]
     public async Task<IActionResult> PreworkReturnPallet([FromBody] PreworkReturnPalletRequest req) =>
         this.ToActionResult(await service.PreworkReturnPalletAsync(req));

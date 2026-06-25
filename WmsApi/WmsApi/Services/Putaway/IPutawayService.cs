@@ -9,7 +9,5 @@ public interface IPutawayService
     Task<ServiceResult> ConfirmPutawayAsync(ConfirmPutawayRequest req);
     Task<ServiceResult> GetStationStatusAsync();
     Task<ServiceResult> GetPreworkStationStatusAsync();
-    Task<ServiceResult> GetPreworkPalletsAsync();
-    Task<ServiceResult> PreworkReceiveAsync(PreworkReceiveRequest req);
     Task<ServiceResult> PreworkReturnPalletAsync(PreworkReturnPalletRequest req);
 }

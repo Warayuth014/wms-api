@@ -14,8 +14,7 @@ public record ConfirmPutawayRequest(
     string PalletId,
     string Destination,
     string OperatorId,
-    bool WrappingRequired = false,
-    bool ConvertToFG = true
+    bool WrappingRequired = false
 );
 
 public record ConfirmPutawayResponse(
@@ -26,49 +25,12 @@ public record ConfirmPutawayResponse(
     string Message
 );
 
-public record RecallToPreworkRequest(
-    string PalletId,
-    string StationId,
-    string OperatorId
-);
-
-public record PreworkReceiveRequest(
-    string PalletId,
-    string StationId,
-    string OperatorId
-);
-
-public record PreworkReceiveItemResponse(
-    string PartId,
-    string Owner,
-    string Brand,
-    string ItemDesc,
-    string? ImageUrl,
-    string? LotNumber,
-    string? ExpiredDate,
-    int Qty,
-    string Condition
-);
-
-public record PreworkReceiveResponse(
-    bool Success,
-    string PalletId,
-    string StationId,
-    List<PreworkReceiveItemResponse> Items,
-    string Message
-);
-
 public record PreworkReturnPalletRequest(
     string PalletId,
-    string StationId,
-    string OperatorId
+    string StationId
 );
 
 public record ReturnPalletToAsisRequest(
     string PalletId,
     int? SessionId
-);
-
-public record AsisDispatchRequest(
-    string PalletId
 );
