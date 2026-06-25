@@ -417,17 +417,29 @@ public class PickingService(WmsDbContext db) : IPickingService
             .Select(g => new { PartId = g.Key, Serials = g.Select(x => x.SerialNo).ToList() })
             .ToDictionaryAsync(x => x.PartId, x => x.Serials);
 
-        var palletItems = palletSubs.Select(s => new PickItemOnPallet(
-            PartId: s.ReceiptLine!.PartId,
-            Owner: s.ReceiptLine!.Part!.Owner,
-            Brand: s.ReceiptLine!.Part!.Brand,
-            ItemDesc: s.ReceiptLine!.Part!.ItemDesc,
-            ImageUrl: s.ReceiptLine!.Part!.ImageUrl,
-            QtyOnPallet: s.ReceiptLine!.QtyReceived,
-            QtyToPickSuggested: Math.Max(0, Math.Min(s.ReceiptLine!.QtyReceived, s.AllocatedQty - s.PickedQty)),
-            Condition: s.ReceiptLine!.Condition,
-            AvailableSerials: availableSerials.GetValueOrDefault(s.ReceiptLine!.PartId, new List<string>())
-        )).ToList();
+        // Group by PartId: ถ้า pallet เดียวกันมีหลาย ReceiptLine ของ Part เดียวกัน → รวมเป็นการ์ดเดียว
+        var palletItems = palletSubs
+            .GroupBy(s => s.ReceiptLine!.PartId)
+            .Select(g =>
+            {
+                var first = g.First();
+                var qtyOnPallet = g.Sum(s => s.ReceiptLine!.QtyReceived);
+                var qtyToPickSuggested = g.Sum(s =>
+                    Math.Max(0, Math.Min(s.ReceiptLine!.QtyReceived, s.AllocatedQty - s.PickedQty)));
+                return new PickItemOnPallet(
+                    PartId: g.Key,
+                    Owner: first.ReceiptLine!.Part!.Owner,
+                    Brand: first.ReceiptLine!.Part!.Brand,
+                    ItemDesc: first.ReceiptLine!.Part!.ItemDesc,
+                    ImageUrl: first.ReceiptLine!.Part!.ImageUrl,
+                    QtyOnPallet: qtyOnPallet,
+                    QtyToPickSuggested: qtyToPickSuggested,
+                    Condition: first.ReceiptLine!.Condition,
+                    AvailableSerials: availableSerials.GetValueOrDefault(g.Key, new List<string>())
+                );
+            })
+            .OrderBy(p => p.PartId)
+            .ToList();
 
         var allDetails = await db.PickOrderDetails
             .Include(d => d.Part)
@@ -593,7 +605,6 @@ public class PickingService(WmsDbContext db) : IPickingService
 
             var destLine = new ReceiptLine
             {
-                SessionId = sourceLine.SessionId,
                 POId = sourceLine.POId,
                 PartId = item.PartId,
                 PalletId = req.DestPalletId,
