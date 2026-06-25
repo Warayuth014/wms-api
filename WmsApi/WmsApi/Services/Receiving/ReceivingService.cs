@@ -36,47 +36,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         ));
     }
 
-    public async Task<ServiceResult> GetActiveSessionAsync(string poId)
-    {
-        if (string.IsNullOrWhiteSpace(poId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ PO ID"));
-
-        var session = await db.ReceivingSessions
-            .Include(s => s.PurchaseOrder)
-                .ThenInclude(p => p!.Supplier)
-            .Include(s => s.PurchaseOrder)
-                .ThenInclude(p => p!.Items)
-                    .ThenInclude(i => i.Part)
-            .Include(s => s.Lines)
-                .ThenInclude(l => l.Part)
-            .FirstOrDefaultAsync(s => s.POId == poId && s.Status == "OPEN");
-
-        if (session is null)
-            return ServiceResult.NotFound(new ApiError($"ไม่พบ Session ที่เปิดอยู่สำหรับ PO '{poId}'"));
-
-        var po = session.PurchaseOrder!;
-        var poItemsDict = po.Items.ToDictionary(i => i.PartId);
-
-        var pendingItems = po.Items
-            .Where(i => i.Status != "RECEIVED")
-            .Select(ToPOItemResponse)
-            .ToList();
-
-        var pendingLines = session.Lines
-            .Where(l => l.Status == "PENDING")
-            .Select(l => ToScanReceiptPartResponse(l, poItemsDict.GetValueOrDefault(l.PartId), "Resumed"))
-            .ToList();
-
-        return ServiceResult.Ok(new ActiveReceivingSessionResponse(
-            SessionId: session.SessionId,
-            POId: po.POId,
-            SupplierName: po.Supplier!.FullName,
-            Status: session.Status,
-            PendingItems: pendingItems,
-            PendingLines: pendingLines
-        ));
-    }
-
     public async Task<ServiceResult> OpenSessionAsync(OpenReceivingRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.POId))
@@ -85,6 +44,36 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         if (string.IsNullOrWhiteSpace(req.OperatorId))
             return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Operator ID"));
 
+        // ── Resume: มี OPEN session อยู่แล้ว → คืน session เดิมพร้อม pendingLines ──
+        var existing = await db.ReceivingSessions
+            .Include(s => s.PurchaseOrder)
+                .ThenInclude(p => p!.Supplier)
+            .Include(s => s.PurchaseOrder)
+                .ThenInclude(p => p!.Items)
+                    .ThenInclude(i => i.Part)
+            .Include(s => s.Lines)
+                .ThenInclude(l => l.Part)
+            .FirstOrDefaultAsync(s => s.POId == req.POId && s.Status == "OPEN");
+
+        if (existing is not null)
+        {
+            var existingPo = existing.PurchaseOrder!;
+            var poItemsDict = existingPo.Items.ToDictionary(i => i.PartId);
+            var pendingLines = existing.Lines
+                .Where(l => l.Status == "PENDING")
+                .Select(l => ToScanReceiptPartResponse(l, poItemsDict.GetValueOrDefault(l.PartId), "Resumed"))
+                .ToList();
+
+            return ServiceResult.Ok(new OpenReceivingResponse(
+                SessionId: existing.SessionId,
+                POId: existingPo.POId,
+                SupplierName: existingPo.Supplier!.FullName,
+                Status: existing.Status,
+                PendingLines: pendingLines
+            ));
+        }
+
+        // ── Create new ──
         var po = await db.PurchaseOrders
             .Include(p => p.Supplier)
             .Include(p => p.Items)
@@ -118,16 +107,6 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 $"ผู้ใช้ '{req.OperatorId}' ถูกระงับการใช้งาน"));
         }
 
-        var existingOpen = await db.ReceivingSessions
-            .FirstOrDefaultAsync(s => s.POId == req.POId && s.Status == "OPEN");
-
-        if (existingOpen is not null)
-        {
-            return ServiceResult.BadRequest(new ApiError(
-                $"PO '{req.POId}' มี Session {existingOpen.SessionId} เปิดอยู่แล้ว",
-                "กรุณาเลือก 'ทำต่อจาก Session เดิม' หรือปิด Session นั้นก่อน"));
-        }
-
         var session = new ReceivingSession
         {
             POId = req.POId,
@@ -142,17 +121,12 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         await db.SaveChangesAsync();
 
-        var pendingItems = po.Items
-            .Where(i => i.Status != "RECEIVED")
-            .Select(ToPOItemResponse)
-            .ToList();
-
         return ServiceResult.Ok(new OpenReceivingResponse(
             SessionId: session.SessionId,
             POId: po.POId,
             SupplierName: po.Supplier!.FullName,
             Status: session.Status,
-            PendingItems: pendingItems
+            PendingLines: []
         ));
     }
 
@@ -736,7 +710,7 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             db.PartSerials.Add(new PartSerial
             {
                 PartId = partId,
-                SerialNo = $"SN-{partId}-{(lastSeq + i):D6}",
+                SerialNo = $"SN-{partId}-{lastSeq + i:D6}",
                 ReceiptLineId = receiptLineId,
                 PalletId = palletId,
                 Status = "STORED",

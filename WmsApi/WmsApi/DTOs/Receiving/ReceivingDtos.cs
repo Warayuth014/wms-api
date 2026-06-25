@@ -35,7 +35,7 @@ public record OpenReceivingResponse(
     string POId,
     string SupplierName,
     string Status,
-    List<POItemResponse> PendingItems
+    List<ScanReceiptPartResponse> PendingLines
 );
 
 public record ScanReceiptPartRequest(
@@ -87,15 +87,6 @@ public record AssignPalletResponse(
     bool AutoClosed = false,
     string? POStatus = null,
     string? CloseMessage = null
-);
-
-public record ActiveReceivingSessionResponse(
-    int SessionId,
-    string POId,
-    string SupplierName,
-    string Status,
-    List<POItemResponse> PendingItems,
-    List<ScanReceiptPartResponse> PendingLines
 );
 
 public record PartialItemSummary(
