@@ -717,7 +717,12 @@ public class PickingService(WmsDbContext db) : IPickingService
         if (pallet is null)
             return ServiceResult.NotFound(new ApiError($"ไม่พบ Pallet '{req.PalletId}'"));
 
-        var dest = string.IsNullOrWhiteSpace(req.Destination) ? "ASRS" : req.Destination.ToUpper();
+        // Auto-decide ถ้า client ไม่ระบุ destination:
+        // - PACKED → ZONE_PACK (dest pallet มีของ pick พร้อมส่ง pack)
+        // - อื่นๆ → ASRS (clear station + กลับเก็บ)
+        var dest = !string.IsNullOrWhiteSpace(req.Destination)
+            ? req.Destination!.ToUpper()
+            : pallet.Status == "PACKED" ? "ZONE_PACK" : "ASRS";
 
         // PACKED pallet → แค่เปลี่ยน Location ไม่แตะ Status/Type
         if (pallet.Status == "PACKED")

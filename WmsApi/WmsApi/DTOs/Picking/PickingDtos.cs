@@ -143,7 +143,7 @@ public record ConfirmPickResponse(
 
 public record ReturnPalletRequest(
     string PalletId,
-    string Destination
+    string? Destination = null   // null → backend auto-decide จาก pallet state
 );
 
 public record CreateTestOrderRequest(
