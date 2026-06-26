@@ -70,18 +70,6 @@ public record NotifyArrivalAssignment(
     string Outcome              // ASSIGNED | ALREADY_AT_STATION | NO_FREE_STATION
 );
 
-public record RequestFromAsrsRequest(
-    string PalletId,
-    string OperatorId
-);
-
-public record PickOrderResponse(
-    string PickOrderId,
-    string Status,
-    DateTime CreatedAt,
-    List<PickOrderDetailResponse> Details
-);
-
 public record PickOrderDetailResponse(
     int Id,
     string PartId,
@@ -92,23 +80,11 @@ public record PickOrderDetailResponse(
     int RequiredQty,
     int ReservedQty,
     int RemainingQty,
-    string Status,
-    List<PickOrderSubResponse> Subs
-);
-
-public record PickOrderSubResponse(
-    int Id,
-    int PickOrderDetailId,
-    int ReceiptLineId,
-    string? PalletId,
-    int AllocatedQty,
-    int PickedQty,
     string Status
 );
 
 public record AssignPickStationRequest(
     string PalletId,
-    string OperatorId,
     string? PickOrderId = null
 );
 
@@ -181,27 +157,3 @@ public record TestOrderItem(
     int Qty
 );
 
-public record CreatePickOrderRequest(
-    string OperatorId,
-    List<CreatePickOrderItem> Items
-);
-
-public record CreatePickOrderItem(
-    string PartId,
-    int Qty
-);
-
-public record CreatePickOrderResponse(
-    string PickOrderId,
-    int TotalRequired,
-    int TotalAllocated,
-    List<PickOrderDetailAllocation> Details,
-    string Message
-);
-
-public record PickOrderDetailAllocation(
-    string PartId,
-    int RequiredQty,
-    int AllocatedQty,
-    int ShortageQty
-);

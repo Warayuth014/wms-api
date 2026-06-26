@@ -9,15 +9,7 @@ namespace WmsApi.Controllers;
 [Route("api/picking")]
 public class PickingController(IPickingService service) : ControllerBase
 {
-    [HttpGet("orders")]
-    public async Task<IActionResult> GetPickOrders() =>
-        this.ToActionResult(await service.GetPickOrdersAsync());
-
-    [HttpGet("order/{pickOrderId}")]
-    public async Task<IActionResult> GetPickOrder(string pickOrderId) =>
-        this.ToActionResult(await service.GetPickOrderAsync(pickOrderId));
-
-    // ── New flow: 2-page picking entry ─────────────────
+    // ── 2-page picking entry ─────────────────
     [HttpGet("orders-list")]
     public async Task<IActionResult> ListOrders() =>
         this.ToActionResult(await service.ListOrdersAsync());
@@ -53,10 +45,6 @@ public class PickingController(IPickingService service) : ControllerBase
     [HttpPost("create-test-order")]
     public async Task<IActionResult> CreateTestOrder([FromBody] CreateTestOrderRequest req) =>
         this.ToActionResult(await service.CreateTestOrderAsync(req));
-
-    [HttpPost("create-order")]
-    public async Task<IActionResult> CreatePickOrder([FromBody] CreatePickOrderRequest req) =>
-        this.ToActionResult(await service.CreatePickOrderAsync(req));
 
     [HttpPost("send-to-pack/{palletId}")]
     public async Task<IActionResult> SendToPack(string palletId) =>

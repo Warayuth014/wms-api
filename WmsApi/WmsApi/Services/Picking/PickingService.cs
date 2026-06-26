@@ -8,19 +8,6 @@ namespace WmsApi.Services.Picking;
 
 public class PickingService(WmsDbContext db) : IPickingService
 {
-    public async Task<ServiceResult> GetPickOrdersAsync()
-    {
-        var orders = await db.PickOrders
-            .Include(o => o.Details).ThenInclude(d => d.Part)
-            .Include(o => o.Details).ThenInclude(d => d.Subs).ThenInclude(s => s.ReceiptLine)
-            .Where(o => o.Status == "WAITING" || o.Status == "PICKING")
-            .OrderByDescending(o => o.CreatedAt)
-            .ToListAsync();
-
-        var result = orders.Select(BuildPickOrderResponse).ToList();
-        return ServiceResult.Ok(result);
-    }
-
     // ── หน้า 1: list orders แบบ summary (WAITING + PICKING) ────
     public async Task<ServiceResult> ListOrdersAsync()
     {
@@ -312,25 +299,10 @@ public class PickingService(WmsDbContext db) : IPickingService
         ));
     }
 
-    public async Task<ServiceResult> GetPickOrderAsync(string pickOrderId)
-    {
-        var order = await db.PickOrders
-            .Include(o => o.Details).ThenInclude(d => d.Part)
-            .Include(o => o.Details).ThenInclude(d => d.Subs).ThenInclude(s => s.ReceiptLine)
-            .FirstOrDefaultAsync(o => o.PickOrderId == pickOrderId);
-
-        if (order is null)
-            return ServiceResult.NotFound(new ApiError($"Pick Order '{pickOrderId}' not found."));
-
-        return ServiceResult.Ok(BuildPickOrderResponse(order));
-    }
-
     public async Task<ServiceResult> AssignStationAsync(AssignPickStationRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.PalletId))
             return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Pallet ID"));
-        if (string.IsNullOrWhiteSpace(req.OperatorId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Operator ID"));
 
         var pallet = await db.Pallets.FindAsync(req.PalletId);
         if (pallet is null)
@@ -456,8 +428,7 @@ public class PickingService(WmsDbContext db) : IPickingService
             RequiredQty: d.RequiredQty,
             ReservedQty: d.ReservedQty,
             RemainingQty: d.RequiredQty - d.ReservedQty,
-            Status: d.Status,
-            Subs: []
+            Status: d.Status
         )).ToList();
 
         return ServiceResult.Ok(new AssignPickStationResponse(
@@ -1022,100 +993,6 @@ public class PickingService(WmsDbContext db) : IPickingService
         return (subsCreated, totalAllocated);
     }
 
-    // ── สร้าง Pick Order จริง (ไม่ต้องระบุ LineId) — auto-allocate จาก stock ที่มีอยู่ ──
-    public async Task<ServiceResult> CreatePickOrderAsync(CreatePickOrderRequest req)
-    {
-        if (req.Items == null || req.Items.Count == 0)
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุสินค้าอย่างน้อย 1 รายการ"));
-        if (string.IsNullOrWhiteSpace(req.OperatorId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Operator ID"));
-
-        var grouped = req.Items
-            .GroupBy(i => i.PartId)
-            .Select(g => new { PartId = g.Key, Qty = g.Sum(x => x.Qty) })
-            .ToList();
-
-        if (grouped.Any(g => g.Qty <= 0))
-            return ServiceResult.BadRequest(new ApiError("จำนวนต้องมากกว่า 0"));
-
-        var partIds = grouped.Select(g => g.PartId).ToList();
-        var existingParts = await db.Parts
-            .Where(p => partIds.Contains(p.PartId))
-            .Select(p => p.PartId)
-            .ToListAsync();
-
-        var missing = partIds.Except(existingParts).ToList();
-        if (missing.Count > 0)
-            return ServiceResult.BadRequest(new ApiError(
-                $"ไม่พบ Part: {string.Join(", ", missing)}"));
-
-        var orderId = $"PO-{DateTime.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(100, 999)}";
-
-        var owner = await db.Parts
-            .Where(p => partIds.Contains(p.PartId))
-            .Select(p => p.Owner)
-            .FirstOrDefaultAsync() ?? string.Empty;
-
-        var customerOrderId = string.IsNullOrEmpty(owner)
-            ? null
-            : await EnsureActiveCustomerOrderAsync(owner);
-
-        db.PickOrders.Add(new PickOrder
-        {
-            PickOrderId = orderId,
-            Status = "OPEN",
-            CreatedBy = req.OperatorId,
-            CustomerOrderId = customerOrderId,
-            CreatedAt = DateTime.UtcNow,
-        });
-
-        var details = new List<PickOrderDetail>();
-        foreach (var g in grouped)
-        {
-            var detail = new PickOrderDetail
-            {
-                PickOrderId = orderId,
-                PartId = g.PartId,
-                RequiredQty = g.Qty,
-                ReservedQty = 0,
-                Status = "PENDING",
-            };
-            db.PickOrderDetails.Add(detail);
-            details.Add(detail);
-        }
-
-        await db.SaveChangesAsync();
-
-        // auto-allocate ทีละ part
-        var allocations = new List<PickOrderDetailAllocation>();
-        var totalAllocated = 0;
-        foreach (var detail in details)
-        {
-            var (_, qty) = await AllocatePendingForPartAsync(detail.PartId);
-            allocations.Add(new PickOrderDetailAllocation(
-                PartId: detail.PartId,
-                RequiredQty: detail.RequiredQty,
-                AllocatedQty: qty,
-                ShortageQty: Math.Max(0, detail.RequiredQty - qty)
-            ));
-            totalAllocated += qty;
-        }
-
-        var totalRequired = grouped.Sum(g => g.Qty);
-        var shortage = totalRequired - totalAllocated;
-        var msg = shortage > 0
-            ? $"สร้าง Pick Order '{orderId}' — จัดสรรได้ {totalAllocated}/{totalRequired} (ขาด {shortage}, รอ PO/stock เพิ่ม)"
-            : $"สร้าง Pick Order '{orderId}' — จัดสรรครบ {totalAllocated}/{totalRequired}";
-
-        return ServiceResult.Ok(new CreatePickOrderResponse(
-            PickOrderId: orderId,
-            TotalRequired: totalRequired,
-            TotalAllocated: totalAllocated,
-            Details: allocations,
-            Message: msg
-        ));
-    }
-
     public async Task<ServiceResult> SendToPackAsync(string palletId)
     {
         var pallet = await db.Pallets.FindAsync(palletId);
@@ -1224,35 +1101,4 @@ public class PickingService(WmsDbContext db) : IPickingService
         });
     }
 
-    private static PickOrderResponse BuildPickOrderResponse(PickOrder order)
-    {
-        var details = order.Details.Select(d =>
-        {
-            var subs = d.Subs.Select(s => new PickOrderSubResponse(
-                Id: s.Id,
-                PickOrderDetailId: s.PickOrderDetailId,
-                ReceiptLineId: s.ReceiptLineId,
-                PalletId: s.ReceiptLine?.PalletId,
-                AllocatedQty: s.AllocatedQty,
-                PickedQty: s.PickedQty,
-                Status: s.Status
-            )).ToList();
-
-            return new PickOrderDetailResponse(
-                Id: d.Id,
-                PartId: d.PartId,
-                Owner: d.Part!.Owner,
-                Brand: d.Part!.Brand,
-                ItemDesc: d.Part!.ItemDesc,
-                ImageUrl: d.Part!.ImageUrl,
-                RequiredQty: d.RequiredQty,
-                ReservedQty: d.ReservedQty,
-                RemainingQty: d.RequiredQty - d.ReservedQty,
-                Status: d.Status,
-                Subs: subs
-            );
-        }).ToList();
-
-        return new PickOrderResponse(order.PickOrderId, order.Status, order.CreatedAt, details);
-    }
 }
