@@ -328,6 +328,46 @@ public class SimulationController(
     }
 
     // ─────────────────────────────────────────────
+    //  Pick Zone — ส่ง pallet เปล่าไปรอที่จุด Pick
+    //  (สำหรับเป็น dest pallet รับของจาก source pallet)
+    // ─────────────────────────────────────────────
+
+    /// <summary>
+    /// ส่ง Pallet เปล่าไปรอที่ Pick Zone (Location=PICK)
+    /// จะถูกเสนอใน suggest-dest-pallets ให้เป็นปลายทาง
+    /// </summary>
+    [HttpPost("pallet/send-to-pick/{palletId}")]
+    public async Task<IActionResult> SendPalletToPick(string palletId)
+    {
+        var pallet = await db.Pallets.FindAsync(palletId);
+        if (pallet is null)
+            return NotFound(new ApiError($"ไม่พบ Pallet '{palletId}'"));
+
+        // ต้องเป็น pallet เปล่าจริงๆ — ไม่มี ReceiptLines ค้างอยู่
+        var hasItems = await db.ReceiptLines.AnyAsync(l =>
+            l.PalletId == palletId &&
+            (l.Status == "PALLETIZED" || l.Status == "PICKING"));
+        if (hasItems)
+            return BadRequest(new ApiError(
+                $"Pallet '{palletId}' ยังมีของอยู่ — ใช้ pallet เปล่าเท่านั้น"));
+
+        // ห้ามดึง pallet ที่กำลัง PICKING (อยู่ที่ source station) มาเป็น dest
+        if (pallet.Status == "PICKING")
+            return BadRequest(new ApiError(
+                $"Pallet '{palletId}' กำลังใช้งาน (Status: PICKING)"));
+
+        pallet.Status = "AVAILABLE";
+        pallet.Type = null;
+        pallet.Location = "PICK";
+        pallet.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new ApiSuccess(true,
+            $"📦 Pallet '{palletId}' พร้อมรอที่ Pick Zone (Location=PICK)"));
+    }
+
+    // ─────────────────────────────────────────────
     //  Prework — จำลองติดสติ๊กเกอร์ + แมพลง Pallet เปล่า
     // ─────────────────────────────────────────────
 

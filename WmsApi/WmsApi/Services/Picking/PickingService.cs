@@ -152,7 +152,7 @@ public class PickingService(WmsDbContext db) : IPickingService
     // 2) ไม่งั้น → pallet ว่างถัดไป (Type=NULL + AVAILABLE)
     public async Task<ServiceResult> SuggestDestPalletsAsync(string? pickOrderId)
     {
-        // 1) มี packing record ของ order นี้ที่ยัง OPEN + pallet ยังอยู่ที่ Pick (ไม่ใช่ ZONE_PACK)?
+        // 1) มี packing record ของ order นี้ที่ยัง OPEN + pallet ยัง active (ยังไม่ PACKED ปิดกล่อง)?
         if (!string.IsNullOrWhiteSpace(pickOrderId))
         {
             var ongoing = await db.Packings
@@ -160,7 +160,8 @@ public class PickingService(WmsDbContext db) : IPickingService
                 .Where(p => p.PickOrderId == pickOrderId
                          && p.Status == "OPEN"
                          && p.Pallet != null
-                         && p.Pallet.Location != "ZONE_PACK")
+                         && p.Pallet.Status != "PACKED"
+                         && p.Pallet.Location == "PICK")
                 .OrderByDescending(p => p.CreatedAt)
                 .Select(p => new
                 {
@@ -175,9 +176,11 @@ public class PickingService(WmsDbContext db) : IPickingService
                 return ServiceResult.Ok(new[] { ongoing });
         }
 
-        // 2) Default — pallet ว่างถัดไป
+        // 2) Default — pallet เปล่ารอที่ Pick Zone (top 1)
         var pallets = await db.Pallets
-            .Where(p => p.Status == "AVAILABLE" && p.Type == null)
+            .Where(p => p.Status == "AVAILABLE"
+                     && p.Type == null
+                     && p.Location == "PICK")
             .OrderBy(p => p.PalletId)
             .Take(1)
             .Select(p => new
