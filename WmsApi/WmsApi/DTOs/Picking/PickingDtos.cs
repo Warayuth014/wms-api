@@ -146,6 +146,15 @@ public record ReturnPalletRequest(
     string? Destination = null   // null → backend auto-decide จาก pallet state
 );
 
+public record ReturnPalletPreviewResponse(
+    string PalletId,
+    string CurrentStatus,
+    string? CurrentLocation,
+    bool CanReturn,
+    string? Destination,    // ASRS | ZONE_PACK — null ถ้า CanReturn=false
+    string Reason           // เหตุผล (เพื่ออ่าน + แสดงบน popup)
+);
+
 public record CreateTestOrderRequest(
     string OperatorId,
     List<TestOrderItem> Items

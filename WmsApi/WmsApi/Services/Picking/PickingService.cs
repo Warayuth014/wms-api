@@ -658,6 +658,59 @@ public class PickingService(WmsDbContext db) : IPickingService
     }
 
 
+    /// Preview ก่อนจริง — ตอบว่า scan pallet นี้ได้ไหม + จะส่งไปไหน
+    /// (ไม่มี side effect — ใช้แสดง popup ก่อน confirm)
+    public async Task<ServiceResult> PreviewReturnPalletAsync(string palletId)
+    {
+        if (string.IsNullOrWhiteSpace(palletId))
+            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Pallet ID"));
+
+        var pallet = await db.Pallets.FindAsync(palletId);
+        if (pallet is null)
+            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pallet '{palletId}'"));
+
+        // กัน source pallet ที่ยัง pick ไม่เสร็จ
+        if (pallet.Status == "PICKING")
+        {
+            var stillPending = await db.PickOrderSubs
+                .Include(s => s.ReceiptLine)
+                .AnyAsync(s => s.ReceiptLine!.PalletId == palletId
+                            && s.Status == "PENDING"
+                            && s.ReceiptLine!.QtyReceived > 0);
+
+            if (stillPending)
+            {
+                return ServiceResult.Ok(new ReturnPalletPreviewResponse(
+                    PalletId: pallet.PalletId,
+                    CurrentStatus: pallet.Status,
+                    CurrentLocation: pallet.Location,
+                    CanReturn: false,
+                    Destination: null,
+                    Reason: "Pallet ยัง pick ไม่เสร็จ — กรุณา pick ให้ครบทุก part / S/N ก่อน"
+                ));
+            }
+        }
+
+        // ตัดสินใจปลายทาง
+        var dest = pallet.Status == "PACKED" ? "ZONE_PACK" : "ASRS";
+        var reason = pallet.Status switch
+        {
+            "PACKED"    => $"Pallet '{palletId}' Pack แล้ว — ส่งไป ZONE_PACK",
+            "PICKING"   => $"Pallet '{palletId}' Pick เสร็จ — คืนเข้า ASRS",
+            "AVAILABLE" => $"Pallet '{palletId}' ว่าง — คืนเข้า ASRS",
+            _           => $"Pallet '{palletId}' สถานะ {pallet.Status} — คืนเข้า ASRS",
+        };
+
+        return ServiceResult.Ok(new ReturnPalletPreviewResponse(
+            PalletId: pallet.PalletId,
+            CurrentStatus: pallet.Status,
+            CurrentLocation: pallet.Location,
+            CanReturn: true,
+            Destination: dest,
+            Reason: reason
+        ));
+    }
+
     public async Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.PalletId))

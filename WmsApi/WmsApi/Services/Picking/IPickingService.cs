@@ -13,6 +13,7 @@ public interface IPickingService
     Task<ServiceResult> AssignStationAsync(AssignPickStationRequest req);
     Task<ServiceResult> ConfirmPickAsync(ConfirmPickRequest req);
     Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req);
+    Task<ServiceResult> PreviewReturnPalletAsync(string palletId);
     Task<ServiceResult> GetAvailableLinesAsync();
     Task<ServiceResult> CreateTestOrderAsync(CreateTestOrderRequest req);
     Task<ServiceResult> SendToPackAsync(string palletId);

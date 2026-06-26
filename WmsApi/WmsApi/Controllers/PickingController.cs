@@ -38,6 +38,10 @@ public class PickingController(IPickingService service) : ControllerBase
     public async Task<IActionResult> ReturnPallet([FromBody] ReturnPalletRequest req) =>
         this.ToActionResult(await service.ReturnPalletAsync(req));
 
+    [HttpGet("return-pallet-preview/{palletId}")]
+    public async Task<IActionResult> PreviewReturnPallet(string palletId) =>
+        this.ToActionResult(await service.PreviewReturnPalletAsync(palletId));
+
     [HttpGet("available-lines")]
     public async Task<IActionResult> GetAvailableLines() =>
         this.ToActionResult(await service.GetAvailableLinesAsync());
