@@ -630,9 +630,8 @@ public class PickingService(WmsDbContext db) : IPickingService
             order.Status = "COMPLETED";
             order.CompletedAt = DateTime.UtcNow;
 
-            // Auto-ส่ง dest pallet ไป ZONE_PACK
-            destPallet.Location = "ZONE_PACK";
-            destPallet.UpdatedAt = DateTime.UtcNow;
+            // Dest pallet ค้างที่ PICK ตามเดิม — operator ต้องสแกน/กด "ส่งไป PACK" เอง
+            // (ห้าม auto-set Location=ZONE_PACK เพราะ pallet ยังอยู่ที่จุด pick จริง)
 
             // Auto-return source pallets ของ order นี้ที่ค้างที่ stations → ASRS
             await ReturnSourcePalletsToAsrsAsync(req.PickOrderId, req.DestPalletId);
