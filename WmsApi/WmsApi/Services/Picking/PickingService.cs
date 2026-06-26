@@ -630,11 +630,9 @@ public class PickingService(WmsDbContext db) : IPickingService
             order.Status = "COMPLETED";
             order.CompletedAt = DateTime.UtcNow;
 
-            // Dest pallet ค้างที่ PICK ตามเดิม — operator ต้องสแกน/กด "ส่งไป PACK" เอง
-            // (ห้าม auto-set Location=ZONE_PACK เพราะ pallet ยังอยู่ที่จุด pick จริง)
-
-            // Auto-return source pallets ของ order นี้ที่ค้างที่ stations → ASRS
-            await ReturnSourcePalletsToAsrsAsync(req.PickOrderId, req.DestPalletId);
+            // Pallet ต้นทาง: ค้างที่ STN เดิม operator ต้องสแกนเพื่อเคลียเอง
+            // Pallet ปลายทาง: ค้างที่ PICK operator ต้องสแกน/กด "ส่งไป PACK" เอง
+            // (ระบบไม่ auto-ย้าย pallet เพราะของจริงยังอยู่ที่จุด pick จนกว่ามนุษย์จะขน)
         }
 
         await db.SaveChangesAsync();
@@ -659,53 +657,6 @@ public class PickingService(WmsDbContext db) : IPickingService
         ));
     }
 
-    /// Auto-return source pallets ของ pick order → ASRS หลัง pick ครบ
-    /// (กันค้างที่ Pick Station)
-    private async Task ReturnSourcePalletsToAsrsAsync(
-        string pickOrderId, string destPalletId)
-    {
-        // หา pallet ทั้งหมดที่เป็น source ของ order นี้
-        var sourcePalletIds = await db.PickOrderSubs
-            .Include(s => s.ReceiptLine)
-            .Where(s => s.PickOrderDetail!.PickOrderId == pickOrderId
-                     && s.ReceiptLine!.PalletId != null
-                     && s.ReceiptLine!.PalletId != destPalletId)
-            .Select(s => s.ReceiptLine!.PalletId!)
-            .Distinct()
-            .ToListAsync();
-
-        if (sourcePalletIds.Count == 0) return;
-
-        // Clear station references
-        var stations = await db.PickStations
-            .Where(s => s.CurrentPalletId != null
-                     && sourcePalletIds.Contains(s.CurrentPalletId))
-            .ToListAsync();
-        foreach (var st in stations)
-            st.CurrentPalletId = null;
-
-        // Pallets → STORED + ASRS
-        var now = DateTime.UtcNow;
-        var pallets = await db.Pallets
-            .Where(p => sourcePalletIds.Contains(p.PalletId)
-                     && p.Status == "PICKING")
-            .ToListAsync();
-        foreach (var p in pallets)
-        {
-            p.Status = "STORED";
-            p.Location = "ASRS";
-            p.UpdatedAt = now;
-        }
-
-        // ReceiptLines: PICKING → PALLETIZED (ถ้ายังมี qty) หรือ PICKED (ถ้าหมด)
-        var receiptLines = await db.ReceiptLines
-            .Where(l => sourcePalletIds.Contains(l.PalletId!) && l.Status == "PICKING")
-            .ToListAsync();
-        foreach (var rl in receiptLines)
-        {
-            rl.Status = rl.QtyReceived > 0 ? "PALLETIZED" : "PICKED";
-        }
-    }
 
     public async Task<ServiceResult> ReturnPalletAsync(ReturnPalletRequest req)
     {
@@ -783,15 +734,15 @@ public class PickingService(WmsDbContext db) : IPickingService
         if (station is not null)
             station.CurrentPalletId = null;
 
-        if (hasItems)
+        // Update ReceiptLines ทั้งหมดที่ยัง PICKING บน pallet นี้:
+        // - qty > 0 → PALLETIZED (ยังมีของ pallet กลับเก็บ)
+        // - qty == 0 → PICKED (pick ครบแล้ว line นี้)
+        var pickingLines = await db.ReceiptLines
+            .Where(l => l.PalletId == req.PalletId && l.Status == "PICKING")
+            .ToListAsync();
+        foreach (var line in pickingLines)
         {
-            var pickingLines = await db.ReceiptLines
-                .Where(l => l.PalletId == req.PalletId
-                         && l.Status == "PICKING"
-                         && l.QtyReceived > 0)
-                .ToListAsync();
-            foreach (var line in pickingLines)
-                line.Status = "PALLETIZED";
+            line.Status = line.QtyReceived > 0 ? "PALLETIZED" : "PICKED";
         }
 
         await db.SaveChangesAsync();
