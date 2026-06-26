@@ -717,6 +717,24 @@ public class PickingService(WmsDbContext db) : IPickingService
         if (pallet is null)
             return ServiceResult.NotFound(new ApiError($"ไม่พบ Pallet '{req.PalletId}'"));
 
+        // กัน clear source pallet ที่ยัง pick ไม่เสร็จ
+        // (PickOrderSub ของ pallet นี้ยังมีสถานะ PENDING แปลว่ายังต้อง pick ต่อ)
+        if (pallet.Status == "PICKING")
+        {
+            var stillPending = await db.PickOrderSubs
+                .Include(s => s.ReceiptLine)
+                .AnyAsync(s => s.ReceiptLine!.PalletId == req.PalletId
+                            && s.Status == "PENDING"
+                            && s.ReceiptLine!.QtyReceived > 0);
+
+            if (stillPending)
+            {
+                return ServiceResult.BadRequest(new ApiError(
+                    $"Pallet '{req.PalletId}' ยัง pick ไม่เสร็จ",
+                    "กรุณา pick ให้ครบทุก part / S/N ก่อนคืน Pallet"));
+            }
+        }
+
         // Auto-decide ถ้า client ไม่ระบุ destination:
         // - PACKED → ZONE_PACK (dest pallet มีของ pick พร้อมส่ง pack)
         // - อื่นๆ → ASRS (clear station + กลับเก็บ)
