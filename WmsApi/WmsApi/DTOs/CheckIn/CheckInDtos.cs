@@ -8,12 +8,7 @@ public record ScanCheckInRequest(
 
 public record ScanCheckInResponse(
     string SlotId,
-    string Owner,
-    string PackingId,
-    int CartonsInSlot,
-    int ExpectedCartons,
-    bool IsReadyToComplete,
-    string Message
+    bool IsReadyToComplete
 );
 
 // ── Preview ก่อน Check-IN (ไม่เขียน DB) ──────────────────────
@@ -34,7 +29,6 @@ public record PreviewCheckInResponse(
     bool IsAlreadyCheckedIn,
     string? DispatchDestination,
     List<PreviewCheckInItem> Items,
-    string Message,
     int PipelineTotal = 0,
     int PickDone = 0,
     int PackDone = 0,
@@ -52,14 +46,7 @@ public record PreviewCheckInItem(
 
 // ── Slot detail ──────────────────────────────────
 public record CheckInSlotDetail(
-    string SlotId,
-    string Owner,
     string Status,
-    DateTime CreatedAt,
-    DateTime? CompletedAt,
-    int CartonsInSlot,
-    int ExpectedCartons,
-    bool IsReadyToComplete,
     List<CheckInCartonItem> Cartons,
     string? CustomerOrderId = null,
     int PipelineTotal = 0,
@@ -78,46 +65,14 @@ public record CheckInCartonItem(
     int OrderCount
 );
 
-// ── List active slots ──────────────────────────────────
-public record CheckInSlotSummary(
-    string SlotId,
-    string Owner,
-    string Status,
-    int CartonsInSlot,
-    int ExpectedCartons,
-    DateTime CreatedAt
-);
-
 // ── Complete (all cartons gathered → generate tracking) ──────
 public record CompleteCheckInRequest(
     string SlotId,
     string OperatorId
 );
 
-public record CompleteCheckInResponse(
-    string SlotId,
-    string Owner,
-    List<PackTrackingItem> Trackings,
-    DateTime CompletedAt,
-    int CartonsCount,
-    string Message
-);
-
-public record PackTrackingItem(
-    string PackingId,
-    string? TrackingId
-);
-
 // ── Dispatch (move to shipping) ──────────────────────────────
 public record DispatchCheckInRequest(
     string SlotId,
     string OperatorId
-);
-
-public record DispatchCheckInResponse(
-    string SlotId,
-    string Owner,
-    DateTime ShippedAt,
-    int CartonsCount,
-    string Message
 );

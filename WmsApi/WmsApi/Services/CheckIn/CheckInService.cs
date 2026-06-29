@@ -116,10 +116,6 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         var destination = _dispatchDestinations[Math.Abs(packingId.GetHashCode()) % _dispatchDestinations.Length];
 
         var isAlreadyCheckedIn = existingEntry != null;
-        var message = isAlreadyCheckedIn
-            ? $"Pack '{packingId}' ถูก check-in แล้วที่ช่อง '{slotId}'"
-            : $"พร้อม check-in ที่ช่อง '{slotId}'";
-
         var progress = await ComputePipelineProgressAsync(customerOrderId, owner);
 
         return ServiceResult.Ok(new PreviewCheckInResponse(
@@ -135,7 +131,6 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             IsAlreadyCheckedIn: isAlreadyCheckedIn,
             DispatchDestination: destination,
             Items: items,
-            Message: message,
             PipelineTotal: progress.PipelineTotal,
             PickDone: progress.PickDone,
             PackDone: progress.PackDone,
@@ -247,14 +242,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
 
         return ServiceResult.Ok(new ScanCheckInResponse(
             SlotId: slot.SlotId,
-            Owner: owner,
-            PackingId: packingId,
-            CartonsInSlot: cartonsInSlot,
-            ExpectedCartons: expectedCartons,
-            IsReadyToComplete: isReady,
-            Message: isReady
-                ? $"ของลูกค้า {owner} ครบแล้ว ({cartonsInSlot}/{expectedCartons}) — พร้อมปริ้น Tracking"
-                : $"วางกล่องช่อง {slot.SlotId} ({cartonsInSlot}/{expectedCartons})"
+            IsReadyToComplete: isReady
         ));
     }
 
@@ -296,21 +284,10 @@ public class CheckInService(WmsDbContext db) : ICheckInService
             OrderCount: orderCounts.GetValueOrDefault(e.PackingId, 0)
         )).ToList();
 
-        var (inSlot, expected) = await ComputeSlotProgressAsync(
-            slotId, slot.Owner, slot.CustomerOrderId);
-        var isReady = inSlot >= expected && expected > 0;
-
         var progress = await ComputePipelineProgressAsync(slot.CustomerOrderId, slot.Owner);
 
         return ServiceResult.Ok(new CheckInSlotDetail(
-            SlotId: slot.SlotId,
-            Owner: slot.Owner,
             Status: slot.Status,
-            CreatedAt: slot.CreatedAt,
-            CompletedAt: slot.CompletedAt,
-            CartonsInSlot: inSlot,
-            ExpectedCartons: expected,
-            IsReadyToComplete: isReady,
             Cartons: cartons,
             CustomerOrderId: slot.CustomerOrderId,
             PipelineTotal: progress.PipelineTotal,
@@ -321,33 +298,7 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         ));
     }
 
-    // ── 3) List Slot ที่ active อยู่ (OPEN/READY) ─────────────
-    public async Task<ServiceResult> GetActiveSlotsAsync()
-    {
-        var slots = await db.CheckInSlots
-            .Where(s => s.Status != "SHIPPED")
-            .OrderBy(s => s.CreatedAt)
-            .ToListAsync();
-
-        var result = new List<CheckInSlotSummary>();
-        foreach (var s in slots)
-        {
-            var (inSlot, expected) = await ComputeSlotProgressAsync(
-                s.SlotId, s.Owner, s.CustomerOrderId);
-            result.Add(new CheckInSlotSummary(
-                SlotId: s.SlotId,
-                Owner: s.Owner,
-                Status: s.Status,
-                CartonsInSlot: inSlot,
-                ExpectedCartons: expected,
-                CreatedAt: s.CreatedAt
-            ));
-        }
-
-        return ServiceResult.Ok(result);
-    }
-
-    // ── 4) Complete: Slot → READY (TrackingId อยู่ที่ Pack ไม่ gen ใหม่) ────
+    // ── 3) Complete: Slot → READY (TrackingId อยู่ที่ Pack ไม่ gen ใหม่) ────
     public async Task<ServiceResult> CompleteSlotAsync(CompleteCheckInRequest req)
     {
         var slot = await db.CheckInSlots
@@ -369,27 +320,10 @@ public class CheckInService(WmsDbContext db) : ICheckInService
         slot.Status = "READY";
         slot.CompletedAt = DateTime.UtcNow;
 
-        // รวบ Tracking ของทุก Pack ใน Slot นี้ (ปริ้น label ได้ถ้า business ต้องการ)
-        var trackings = await db.CheckInEntries
-            .Where(e => e.SlotId == slot.SlotId)
-            .Include(e => e.Packing)
-            .OrderBy(e => e.ScannedAt)
-            .Select(e => new PackTrackingItem(
-                e.PackingId,
-                e.Packing!.TrackingId
-            ))
-            .ToListAsync();
-
         await db.SaveChangesAsync();
 
-        return ServiceResult.Ok(new CompleteCheckInResponse(
-            SlotId: slot.SlotId,
-            Owner: slot.Owner,
-            Trackings: trackings,
-            CompletedAt: slot.CompletedAt.Value,
-            CartonsCount: inSlot,
-            Message: $"ของลูกค้า {slot.Owner} พร้อมจัดส่ง"
-        ));
+        return ServiceResult.Ok(new ApiSuccess(true,
+            $"ของลูกค้า {slot.Owner} พร้อมจัดส่ง"));
     }
 
     // ── 5) Dispatch: ย้ายขึ้นรถแล้ว → Status=SHIPPED ──────────
@@ -449,13 +383,8 @@ public class CheckInService(WmsDbContext db) : ICheckInService
 
         await db.SaveChangesAsync();
 
-        return ServiceResult.Ok(new DispatchCheckInResponse(
-            SlotId: slot.SlotId,
-            Owner: slot.Owner,
-            ShippedAt: shippedAt,
-            CartonsCount: entries.Count,
-            Message: $"ช่อง {slot.SlotId} ย้ายขึ้นรถแล้ว ({entries.Count} กล่อง)"
-        ));
+        return ServiceResult.Ok(new ApiSuccess(true,
+            $"ช่อง {slot.SlotId} ย้ายขึ้นรถแล้ว ({entries.Count} กล่อง)"));
     }
 
     // ── Helpers ──────────────────────────────────

@@ -8,7 +8,6 @@ public interface ICheckInService
     Task<ServiceResult> PreviewCartonAsync(PreviewCheckInRequest req);
     Task<ServiceResult> ScanCartonAsync(ScanCheckInRequest req);
     Task<ServiceResult> GetSlotAsync(string slotId);
-    Task<ServiceResult> GetActiveSlotsAsync();
     Task<ServiceResult> CompleteSlotAsync(CompleteCheckInRequest req);
     Task<ServiceResult> DispatchSlotAsync(DispatchCheckInRequest req);
 }

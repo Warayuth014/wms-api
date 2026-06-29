@@ -21,10 +21,6 @@ public class CheckInController(ICheckInService service) : ControllerBase
     public async Task<IActionResult> GetSlot(string slotId) =>
         this.ToActionResult(await service.GetSlotAsync(slotId));
 
-    [HttpGet("slots")]
-    public async Task<IActionResult> GetActiveSlots() =>
-        this.ToActionResult(await service.GetActiveSlotsAsync());
-
     [HttpPost("complete")]
     public async Task<IActionResult> Complete([FromBody] CompleteCheckInRequest req) =>
         this.ToActionResult(await service.CompleteSlotAsync(req));
