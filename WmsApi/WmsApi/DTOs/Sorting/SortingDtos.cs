@@ -9,9 +9,6 @@ public record SortingStationView(
     int? CartonsCount,
     int? MaxCapacity,
     bool? IsFull,
-    DateTime? StartedAt,
-    string? DisabledBy,
-    DateTime? DisabledAt,
     string? DisableReason
 );
 
@@ -24,8 +21,6 @@ public record SortingStationDetail(
     int CartonsCount,
     int MaxCapacity,
     bool IsFull,
-    DateTime? StartedAt,
-    DateTime? FullAt,
     List<SortingStationCarton> Cartons,
     int PendingCount             // queue items ที่ยัง PENDING
 );
@@ -72,8 +67,5 @@ public record CreateSortingBatchRequest(
 public record CreateSortingBatchResponse(
     string Outcome,                // ASSIGNED | QUEUED
     int? StationId,                // ถ้า ASSIGNED — station ที่ได้
-    string? PalletId,              // ถ้า ASSIGNED — pallet id (SP-XX)
-    int BatchSize,                 // = packingIds.Count
-    int? QueueId,                  // ถ้า QUEUED — id ใน queue
-    string Message
+    int BatchSize                  // = packingIds.Count
 );

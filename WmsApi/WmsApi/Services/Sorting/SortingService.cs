@@ -38,9 +38,6 @@ public class SortingService(
                 CartonsCount: p?.CartonsCount,
                 MaxCapacity: p?.MaxCapacity,
                 IsFull: p != null && p.CartonsCount >= p.MaxCapacity,
-                StartedAt: p?.CreatedAt,
-                DisabledBy: s.DisabledBy,
-                DisabledAt: s.DisabledAt,
                 DisableReason: s.DisableReason
             );
         }).ToList();
@@ -119,8 +116,6 @@ public class SortingService(
             CartonsCount: p?.CartonsCount ?? 0,
             MaxCapacity: p?.MaxCapacity ?? 0,
             IsFull: p != null && p.CartonsCount >= p.MaxCapacity,
-            StartedAt: p?.CreatedAt,
-            FullAt: p?.SealedAt,
             Cartons: cartons,
             PendingCount: pendingCount
         );
@@ -326,10 +321,7 @@ public class SortingService(
             return ServiceResult.Ok(new CreateSortingBatchResponse(
                 Outcome: "QUEUED",
                 StationId: null,
-                PalletId: null,
-                BatchSize: ids.Count,
-                QueueId: queue.Id,
-                Message: $"Station เต็ม — Batch ถูก queue ไว้ ({ids.Count} packs)"
+                BatchSize: ids.Count
             ));
         }
 
@@ -339,10 +331,7 @@ public class SortingService(
         return ServiceResult.Ok(new CreateSortingBatchResponse(
             Outcome: "ASSIGNED",
             StationId: freeStation.StationId,
-            PalletId: pallet.PalletId,
-            BatchSize: ids.Count,
-            QueueId: null,
-            Message: $"Batch {ids.Count} packs → Station {freeStation.StationId} ({pallet.PalletId})"
+            BatchSize: ids.Count
         ));
     }
 
