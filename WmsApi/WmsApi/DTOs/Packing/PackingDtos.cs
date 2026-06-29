@@ -5,8 +5,7 @@ public record PackingPalletResponse(
     string PalletId,
     string Status,
     string? Location,
-    List<PackingSummary> Packs,
-    string Message
+    List<PackingSummary> Packs
 );
 
 public record PackingSummary(
@@ -66,19 +65,5 @@ public record ScanPackPartRequest(
     int Qty,
     string OperatorId,
     List<string>? SerialNumbers = null
-);
-
-public record ConfirmPackRequest(
-    string PackingId,
-    string OperatorId
-);
-
-public record ConfirmPackResponse(
-    string PackingId,
-    string Status,
-    string? TrackingId,
-    bool PalletShipped,
-    DateTime CompletedAt,
-    string Message
 );
 

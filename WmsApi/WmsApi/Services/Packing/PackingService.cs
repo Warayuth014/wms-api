@@ -47,8 +47,7 @@ public class PackingService(WmsDbContext db) : IPackingService
             PalletId: pallet.PalletId,
             Status: pallet.Status,
             Location: pallet.Location,
-            Packs: summaries,
-            Message: $"พบ {packs.Count} Pack"
+            Packs: summaries
         ));
     }
 
@@ -430,42 +429,6 @@ public class PackingService(WmsDbContext db) : IPackingService
         }
 
         return orderResult;
-    }
-
-    public async Task<ServiceResult> ConfirmPackAsync(ConfirmPackRequest req)
-    {
-        if (string.IsNullOrWhiteSpace(req.PackingId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Packing ID"));
-        if (string.IsNullOrWhiteSpace(req.OperatorId))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Operator ID"));
-
-        var pack = await db.Packings
-            .Include(p => p.Details)
-            .FirstOrDefaultAsync(p => p.PackingId == req.PackingId);
-
-        if (pack is null)
-            return ServiceResult.NotFound(new ApiError($"ไม่พบ Pack '{req.PackingId}'"));
-
-        if (pack.Status != "OPEN")
-            return ServiceResult.BadRequest(new ApiError("Pack นี้ปิดแล้ว"));
-
-        if (pack.Details.Any(d => d.Status != "DONE"))
-            return ServiceResult.BadRequest(new ApiError(
-                "ยัง pack ไม่ครบทุก Order ใน Pack นี้"));
-
-        var (trackingId, palletReleased, completedAt) = await FinalizePackInternalAsync(pack);
-        await db.SaveChangesAsync();
-
-        return ServiceResult.Ok(new ConfirmPackResponse(
-            PackingId: pack.PackingId,
-            Status: pack.Status,
-            TrackingId: trackingId,
-            PalletShipped: palletReleased,
-            CompletedAt: completedAt,
-            Message: palletReleased
-                ? $"Pack สำเร็จ — Pallet เปล่าพร้อมใช้ใหม่"
-                : $"Pack สำเร็จ (ยังเหลือ Pack อื่นใน Pallet)"
-        ));
     }
 
     // Finalize = Pack → DONE + gen TrackingId + release Pallet ถ้าหมด

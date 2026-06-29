@@ -24,8 +24,4 @@ public class PackingController(IPackingService service) : ControllerBase
     [HttpPost("scan-part")]
     public async Task<IActionResult> ScanPart([FromBody] ScanPackPartRequest req) =>
         this.ToActionResult(await service.ScanPartAsync(req));
-
-    [HttpPost("confirm-pack")]
-    public async Task<IActionResult> ConfirmPack([FromBody] ConfirmPackRequest req) =>
-        this.ToActionResult(await service.ConfirmPackAsync(req));
 }
