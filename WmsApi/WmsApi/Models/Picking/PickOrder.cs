@@ -12,7 +12,6 @@ public class PickOrder
 
     public string Status { get; set; } = "OPEN";
 
-    [Column(TypeName = "nvarchar(50)")]
     public string CreatedBy { get; set; } = string.Empty;
 
     [Column(TypeName = "nvarchar(50)")]

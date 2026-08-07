@@ -12,7 +12,6 @@ public class PickOrderDetail
     [Column(TypeName = "nvarchar(50)")]
     public string PickOrderId { get; set; } = string.Empty;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PartId { get; set; } = string.Empty;
 
     public int RequiredQty { get; set; }

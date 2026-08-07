@@ -10,7 +10,6 @@ public class Packing
     [Column(TypeName = "nvarchar(50)")]
     public string PackingId { get; set; } = string.Empty;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PalletId { get; set; } = string.Empty;
 
     [Column(TypeName = "nvarchar(50)")]

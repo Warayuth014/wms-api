@@ -10,7 +10,6 @@ public class WrappingSession
     public int WrappingId { get; set; }
     public int PutawayId { get; set; }
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PalletId { get; set; } = string.Empty;
 
     public string Status { get; set; } = "PENDING";

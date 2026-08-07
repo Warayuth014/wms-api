@@ -12,7 +12,6 @@ public class PickStation
 
     public string Name { get; set; } = string.Empty;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string? CurrentPalletId { get; set; }
 
     [ForeignKey(nameof(CurrentPalletId))]

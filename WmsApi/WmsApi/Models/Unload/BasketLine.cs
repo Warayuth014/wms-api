@@ -15,10 +15,8 @@ public class BasketLine
     [Column(TypeName = "nvarchar(50)")]
     public string BasketId { get; set; } = string.Empty;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PartId { get; set; } = string.Empty;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PalletId { get; set; } = string.Empty;
 
     public string? LotNumber { get; set; }
@@ -29,7 +27,6 @@ public class BasketLine
 
     public DateTime LoadedAt { get; set; } = DateTime.UtcNow;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string OperatorId { get; set; } = string.Empty;
 
     [ForeignKey(nameof(SessionId))]

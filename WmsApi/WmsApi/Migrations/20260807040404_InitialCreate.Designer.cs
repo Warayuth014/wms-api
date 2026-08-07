@@ -12,8 +12,8 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    [Migration("20260407062323_AddSortingAndTrackingId")]
-    partial class AddSortingAndTrackingId
+    [Migration("20260807040404_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,99 @@ namespace WmsApi.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("WmsApi.Models.Basket", b =>
+                {
+                    b.Property<string>("BasketId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Destination")
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Zone")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("BasketId");
+
+                    b.ToTable("Baskets", "unload");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.BasketLine", b =>
+                {
+                    b.Property<int>("LineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LineId"));
+
+                    b.Property<string>("BasketId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateOnly?>("ExpiredDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("LoadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LotNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("PalletId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("PartId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("QtyLoaded")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("UnloadLineId")
+                        .HasColumnType("int");
+
+                    b.HasKey("LineId");
+
+                    b.HasIndex("BasketId");
+
+                    b.HasIndex("OperatorId");
+
+                    b.HasIndex("PalletId");
+
+                    b.HasIndex("PartId");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("UnloadLineId");
+
+                    b.ToTable("BasketLines", "unload");
+                });
 
             modelBuilder.Entity("WmsApi.Models.CancelLog", b =>
                 {
@@ -65,6 +158,109 @@ namespace WmsApi.Migrations
                     b.HasIndex("RequestBy");
 
                     b.ToTable("CancelLog", "audit");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CheckInEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PackingId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("ScannedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ScannedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ShippedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SlotId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackingId")
+                        .IsUnique();
+
+                    b.HasIndex("SlotId");
+
+                    b.ToTable("CheckInEntries", "packing");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CheckInSlot", b =>
+                {
+                    b.Property<string>("SlotId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CustomerOrderId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("ShippedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("SlotId");
+
+                    b.HasIndex("CustomerOrderId");
+
+                    b.ToTable("CheckInSlots", "packing");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CustomerOrder", b =>
+                {
+                    b.Property<string>("CustomerOrderId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("ShippedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("CustomerOrderId");
+
+                    b.ToTable("CustomerOrders", "customer");
                 });
 
             modelBuilder.Entity("WmsApi.Models.POItem", b =>
@@ -114,6 +310,129 @@ namespace WmsApi.Migrations
                         .IsUnique();
 
                     b.ToTable("POItems", "receiving");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.Packing", b =>
+                {
+                    b.Property<string>("PackingId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PalletId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("PickOrderId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("SeqNo")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SortedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SortingPalletId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TrackingId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("WeightGram")
+                        .HasColumnType("int");
+
+                    b.HasKey("PackingId");
+
+                    b.HasIndex("PalletId");
+
+                    b.HasIndex("SortingPalletId");
+
+                    b.ToTable("Packings", "packing");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.PackingDetail", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PackingId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PickOrderId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackingId");
+
+                    b.HasIndex("PickOrderId");
+
+                    b.ToTable("PackingDetails", "packing");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.PackingPartScan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("PackingId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PartId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PickOrderId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("ScannedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ScannedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("ScannedQty")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackingId");
+
+                    b.ToTable("PackingPartScans", "packing");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Pallet", b =>
@@ -179,6 +498,58 @@ namespace WmsApi.Migrations
                     b.ToTable("Parts", "master");
                 });
 
+            modelBuilder.Entity("WmsApi.Models.PartSerial", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PackedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PackingId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PalletId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("PartId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("ReceiptLineId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SerialNo")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackingId");
+
+                    b.HasIndex("PalletId");
+
+                    b.HasIndex("ReceiptLineId");
+
+                    b.HasIndex("PartId", "SerialNo")
+                        .IsUnique();
+
+                    b.ToTable("PartSerials", "master");
+                });
+
             modelBuilder.Entity("WmsApi.Models.PickOrder", b =>
                 {
                     b.Property<string>("PickOrderId")
@@ -192,6 +563,9 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("CreatedBy")
                         .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CustomerOrderId")
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("Status")
@@ -201,6 +575,8 @@ namespace WmsApi.Migrations
                     b.HasKey("PickOrderId");
 
                     b.HasIndex("CreatedBy");
+
+                    b.HasIndex("CustomerOrderId");
 
                     b.ToTable("PickOrders", "picking");
                 });
@@ -215,7 +591,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PartId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PickOrderId")
                         .IsRequired()
@@ -279,7 +655,7 @@ namespace WmsApi.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("CurrentPalletId")
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -331,11 +707,11 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PartId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("Qty")
                         .HasColumnType("int");
@@ -455,7 +831,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("POId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PalletId")
                         .HasColumnType("nvarchar(450)");
@@ -470,9 +846,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime>("ReceivedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("SessionId")
-                        .HasColumnType("int");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -484,48 +857,13 @@ namespace WmsApi.Migrations
 
                     b.HasIndex("OperatorId");
 
+                    b.HasIndex("POId");
+
                     b.HasIndex("PalletId");
 
                     b.HasIndex("PartId");
 
-                    b.HasIndex("SessionId");
-
                     b.ToTable("ReceiptLines", "receiving");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.ReceivingSession", b =>
-                {
-                    b.Property<int>("SessionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SessionId"));
-
-                    b.Property<DateTime?>("ClosedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("OpenedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("OperatorId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("POId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("SessionId");
-
-                    b.HasIndex("OperatorId");
-
-                    b.HasIndex("POId");
-
-                    b.ToTable("ReceivingSessions", "receiving");
                 });
 
             modelBuilder.Entity("WmsApi.Models.ShipXQueue", b =>
@@ -541,7 +879,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -566,46 +904,7 @@ namespace WmsApi.Migrations
                     b.ToTable("ShipXQueue", "putaway");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.SortSession", b =>
-                {
-                    b.Property<int>("SessionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SessionId"));
-
-                    b.Property<DateTime?>("ClosedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("OperatorId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("SortPalletId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("StationId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("SessionId");
-
-                    b.HasIndex("SortPalletId");
-
-                    b.HasIndex("StationId");
-
-                    b.ToTable("SortSessions", "sorting");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortSessionItem", b =>
+            modelBuilder.Entity("WmsApi.Models.SortingBatchQueue", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -613,44 +912,225 @@ namespace WmsApi.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime>("ScannedAt")
+                    b.Property<DateTime?>("AssignedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("SessionId")
-                        .HasColumnType("int");
+                    b.Property<string>("AssignedPalletId")
+                        .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("SourcePalletId")
+                    b.Property<string>("CreatedBy")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("TrackingId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SessionId");
-
-                    b.HasIndex("SourcePalletId");
-
-                    b.ToTable("SortSessionItems", "sorting");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortStation", b =>
-                {
-                    b.Property<string>("StationId")
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("PackingIdsJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedPalletId");
+
+                    b.HasIndex("Status", "QueuedAt");
+
+                    b.ToTable("SortingBatchQueues", "sorting");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.SortingPallet", b =>
+                {
+                    b.Property<string>("PalletId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CartonsCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MaxCapacity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SealedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("StationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("PalletId");
+
+                    b.ToTable("SortingPallets", "sorting");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.SortingPalletPack", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("PackingId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PalletId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ScheduledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SequenceNo")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackingId");
+
+                    b.HasIndex("PalletId");
+
+                    b.HasIndex("Status", "ScheduledAt");
+
+                    b.ToTable("SortingPalletPacks", "sorting");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.SortingStation", b =>
+                {
+                    b.Property<int>("StationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("StationId"));
+
+                    b.Property<string>("CurrentPalletId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("DisableReason")
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime?>("DisabledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisabledBy")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
 
                     b.HasKey("StationId");
 
-                    b.ToTable("SortStations", "sorting");
+                    b.HasIndex("CurrentPalletId");
+
+                    b.ToTable("SortingStations", "sorting");
+
+                    b.HasData(
+                        new
+                        {
+                            StationId = 1,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 2,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 3,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 4,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 5,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 6,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 7,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 8,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 9,
+                            Enabled = true
+                        },
+                        new
+                        {
+                            StationId = 10,
+                            Enabled = true
+                        });
+                });
+
+            modelBuilder.Entity("WmsApi.Models.StationAuditLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OperatorId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PalletId")
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("StationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StationAuditLogs", "sorting");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Supplier", b =>
@@ -807,7 +1287,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("PutawayId")
                         .HasColumnType("int");
@@ -823,6 +1303,57 @@ namespace WmsApi.Migrations
                     b.HasIndex("PutawayId");
 
                     b.ToTable("WrappingSessions", "putaway");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.BasketLine", b =>
+                {
+                    b.HasOne("WmsApi.Models.Basket", "Basket")
+                        .WithMany("Lines")
+                        .HasForeignKey("BasketId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.User", "Operator")
+                        .WithMany()
+                        .HasForeignKey("OperatorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.Pallet", "Pallet")
+                        .WithMany()
+                        .HasForeignKey("PalletId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.Part", "Part")
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.UnloadSession", "Session")
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.UnloadLine", "UnloadLine")
+                        .WithMany()
+                        .HasForeignKey("UnloadLineId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Basket");
+
+                    b.Navigation("Operator");
+
+                    b.Navigation("Pallet");
+
+                    b.Navigation("Part");
+
+                    b.Navigation("Session");
+
+                    b.Navigation("UnloadLine");
                 });
 
             modelBuilder.Entity("WmsApi.Models.CancelLog", b =>
@@ -841,6 +1372,35 @@ namespace WmsApi.Migrations
                     b.Navigation("Approver");
 
                     b.Navigation("Requester");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CheckInEntry", b =>
+                {
+                    b.HasOne("WmsApi.Models.Packing", "Packing")
+                        .WithMany()
+                        .HasForeignKey("PackingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.CheckInSlot", "Slot")
+                        .WithMany("Entries")
+                        .HasForeignKey("SlotId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Packing");
+
+                    b.Navigation("Slot");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CheckInSlot", b =>
+                {
+                    b.HasOne("WmsApi.Models.CustomerOrder", "CustomerOrder")
+                        .WithMany()
+                        .HasForeignKey("CustomerOrderId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("CustomerOrder");
                 });
 
             modelBuilder.Entity("WmsApi.Models.POItem", b =>
@@ -862,6 +1422,86 @@ namespace WmsApi.Migrations
                     b.Navigation("PurchaseOrder");
                 });
 
+            modelBuilder.Entity("WmsApi.Models.Packing", b =>
+                {
+                    b.HasOne("WmsApi.Models.Pallet", "Pallet")
+                        .WithMany()
+                        .HasForeignKey("PalletId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.SortingPallet", "SortingPallet")
+                        .WithMany("Packings")
+                        .HasForeignKey("SortingPalletId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Pallet");
+
+                    b.Navigation("SortingPallet");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.PackingDetail", b =>
+                {
+                    b.HasOne("WmsApi.Models.Packing", "Packing")
+                        .WithMany("Details")
+                        .HasForeignKey("PackingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.PickOrder", "PickOrder")
+                        .WithMany()
+                        .HasForeignKey("PickOrderId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Packing");
+
+                    b.Navigation("PickOrder");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.PackingPartScan", b =>
+                {
+                    b.HasOne("WmsApi.Models.Packing", "Packing")
+                        .WithMany()
+                        .HasForeignKey("PackingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Packing");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.PartSerial", b =>
+                {
+                    b.HasOne("WmsApi.Models.Packing", "Packing")
+                        .WithMany()
+                        .HasForeignKey("PackingId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("WmsApi.Models.Pallet", "Pallet")
+                        .WithMany()
+                        .HasForeignKey("PalletId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("WmsApi.Models.Part", "Part")
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WmsApi.Models.ReceiptLine", "ReceiptLine")
+                        .WithMany()
+                        .HasForeignKey("ReceiptLineId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Packing");
+
+                    b.Navigation("Pallet");
+
+                    b.Navigation("Part");
+
+                    b.Navigation("ReceiptLine");
+                });
+
             modelBuilder.Entity("WmsApi.Models.PickOrder", b =>
                 {
                     b.HasOne("WmsApi.Models.User", "Creator")
@@ -870,7 +1510,14 @@ namespace WmsApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("WmsApi.Models.CustomerOrder", "CustomerOrder")
+                        .WithMany("PickOrders")
+                        .HasForeignKey("CustomerOrderId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Creator");
+
+                    b.Navigation("CustomerOrder");
                 });
 
             modelBuilder.Entity("WmsApi.Models.PickOrderDetail", b =>
@@ -986,6 +1633,12 @@ namespace WmsApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("WmsApi.Models.PurchaseOrder", "PurchaseOrder")
+                        .WithMany()
+                        .HasForeignKey("POId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("WmsApi.Models.Pallet", "Pallet")
                         .WithMany("ReceiptLines")
                         .HasForeignKey("PalletId")
@@ -997,36 +1650,11 @@ namespace WmsApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("WmsApi.Models.ReceivingSession", "Session")
-                        .WithMany("Lines")
-                        .HasForeignKey("SessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Operator");
 
                     b.Navigation("Pallet");
 
                     b.Navigation("Part");
-
-                    b.Navigation("Session");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.ReceivingSession", b =>
-                {
-                    b.HasOne("WmsApi.Models.User", "Operator")
-                        .WithMany()
-                        .HasForeignKey("OperatorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("WmsApi.Models.PurchaseOrder", "PurchaseOrder")
-                        .WithMany()
-                        .HasForeignKey("POId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Operator");
 
                     b.Navigation("PurchaseOrder");
                 });
@@ -1050,42 +1678,43 @@ namespace WmsApi.Migrations
                     b.Navigation("PutawaySession");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.SortSession", b =>
+            modelBuilder.Entity("WmsApi.Models.SortingBatchQueue", b =>
                 {
-                    b.HasOne("WmsApi.Models.Pallet", "SortPallet")
+                    b.HasOne("WmsApi.Models.SortingPallet", "AssignedPallet")
                         .WithMany()
-                        .HasForeignKey("SortPalletId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
+                        .HasForeignKey("AssignedPalletId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
-                    b.HasOne("WmsApi.Models.SortStation", "Station")
-                        .WithMany()
-                        .HasForeignKey("StationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SortPallet");
-
-                    b.Navigation("Station");
+                    b.Navigation("AssignedPallet");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.SortSessionItem", b =>
+            modelBuilder.Entity("WmsApi.Models.SortingPalletPack", b =>
                 {
-                    b.HasOne("WmsApi.Models.SortSession", "Session")
-                        .WithMany("Items")
-                        .HasForeignKey("SessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("WmsApi.Models.Pallet", "SourcePallet")
+                    b.HasOne("WmsApi.Models.Packing", "Packing")
                         .WithMany()
-                        .HasForeignKey("SourcePalletId")
+                        .HasForeignKey("PackingId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.Navigation("Session");
+                    b.HasOne("WmsApi.Models.SortingPallet", "Pallet")
+                        .WithMany()
+                        .HasForeignKey("PalletId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
-                    b.Navigation("SourcePallet");
+                    b.Navigation("Packing");
+
+                    b.Navigation("Pallet");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.SortingStation", b =>
+                {
+                    b.HasOne("WmsApi.Models.SortingPallet", "CurrentPallet")
+                        .WithMany()
+                        .HasForeignKey("CurrentPalletId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("CurrentPallet");
                 });
 
             modelBuilder.Entity("WmsApi.Models.UnloadLine", b =>
@@ -1161,6 +1790,26 @@ namespace WmsApi.Migrations
                     b.Navigation("PutawaySession");
                 });
 
+            modelBuilder.Entity("WmsApi.Models.Basket", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CheckInSlot", b =>
+                {
+                    b.Navigation("Entries");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.CustomerOrder", b =>
+                {
+                    b.Navigation("PickOrders");
+                });
+
+            modelBuilder.Entity("WmsApi.Models.Packing", b =>
+                {
+                    b.Navigation("Details");
+                });
+
             modelBuilder.Entity("WmsApi.Models.Pallet", b =>
                 {
                     b.Navigation("ReceiptLines");
@@ -1188,14 +1837,9 @@ namespace WmsApi.Migrations
                     b.Navigation("PickOrderSubs");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.ReceivingSession", b =>
+            modelBuilder.Entity("WmsApi.Models.SortingPallet", b =>
                 {
-                    b.Navigation("Lines");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.SortSession", b =>
-                {
-                    b.Navigation("Items");
+                    b.Navigation("Packings");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Supplier", b =>

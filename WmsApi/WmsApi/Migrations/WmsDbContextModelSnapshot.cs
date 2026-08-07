@@ -75,15 +75,15 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("OperatorId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PartId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("QtyLoaded")
                         .HasColumnType("int");
@@ -330,7 +330,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PickOrderId")
                         .HasColumnType("nvarchar(50)");
@@ -513,11 +513,11 @@ namespace WmsApi.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("PalletId")
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PartId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int?>("ReceiptLineId")
                         .HasColumnType("int");
@@ -560,7 +560,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("CreatedBy")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("CustomerOrderId")
                         .HasColumnType("nvarchar(50)");
@@ -588,7 +588,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PartId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PickOrderId")
                         .IsRequired()
@@ -652,7 +652,7 @@ namespace WmsApi.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("CurrentPalletId")
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -663,6 +663,58 @@ namespace WmsApi.Migrations
                     b.HasIndex("CurrentPalletId");
 
                     b.ToTable("PickStations", "picking");
+
+                    b.HasData(
+                        new
+                        {
+                            StationId = "STN-001",
+                            Name = "Pick Station 01"
+                        },
+                        new
+                        {
+                            StationId = "STN-002",
+                            Name = "Pick Station 02"
+                        },
+                        new
+                        {
+                            StationId = "STN-003",
+                            Name = "Pick Station 03"
+                        },
+                        new
+                        {
+                            StationId = "STN-004",
+                            Name = "Pick Station 04"
+                        },
+                        new
+                        {
+                            StationId = "STN-005",
+                            Name = "Pick Station 05"
+                        },
+                        new
+                        {
+                            StationId = "STN-006",
+                            Name = "Pick Station 06"
+                        },
+                        new
+                        {
+                            StationId = "STN-007",
+                            Name = "Pick Station 07"
+                        },
+                        new
+                        {
+                            StationId = "STN-008",
+                            Name = "Pick Station 08"
+                        },
+                        new
+                        {
+                            StationId = "STN-009",
+                            Name = "Pick Station 09"
+                        },
+                        new
+                        {
+                            StationId = "STN-010",
+                            Name = "Pick Station 10"
+                        });
                 });
 
             modelBuilder.Entity("WmsApi.Models.PreworkCutLog", b =>
@@ -704,11 +756,11 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PartId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("Qty")
                         .HasColumnType("int");
@@ -876,7 +928,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -1284,7 +1336,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("PalletId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("PutawayId")
                         .HasColumnType("int");

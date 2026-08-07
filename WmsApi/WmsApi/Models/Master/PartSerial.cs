@@ -9,7 +9,6 @@ public class PartSerial
     [Key]
     public int Id { get; set; }
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PartId { get; set; } = string.Empty;
 
     [Column(TypeName = "nvarchar(80)")]
@@ -17,7 +16,6 @@ public class PartSerial
 
     public int? ReceiptLineId { get; set; }
 
-    [Column(TypeName = "nvarchar(50)")]
     public string? PalletId { get; set; }
 
     [Column(TypeName = "nvarchar(20)")]

@@ -120,6 +120,15 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             }).ToArray()
         );
 
+        // Seed 10 pick stations (STN-001..STN-010) — ไม่มีที่ไหนใน code สร้างแถวเองเลย
+        mb.Entity<PickStation>().HasData(
+            Enumerable.Range(1, 10).Select(i => new PickStation
+            {
+                StationId = $"STN-{i:D3}",
+                Name      = $"Pick Station {i:D2}",
+            }).ToArray()
+        );
+
         // CheckIn
         mb.Entity<CheckInEntry>()
             .HasOne(e => e.Slot)

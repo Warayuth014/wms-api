@@ -9,13 +9,11 @@ public class PreworkCutLog
     [Key]
     public int Id { get; set; }
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PalletId { get; set; } = string.Empty;
 
     [Column(TypeName = "nvarchar(20)")]
     public string StationId { get; set; } = string.Empty;
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PartId { get; set; } = string.Empty;
 
     public string? Owner { get; set; }

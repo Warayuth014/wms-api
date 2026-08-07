@@ -10,7 +10,6 @@ public class ShipXQueue
     public int QueueId { get; set; }
     public int PutawayId { get; set; }
 
-    [Column(TypeName = "nvarchar(50)")]
     public string PalletId { get; set; } = string.Empty;
 
     public string Payload { get; set; } = string.Empty;
