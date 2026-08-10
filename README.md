@@ -97,7 +97,3 @@ WmsApi/
     ├── Migrations/
     └── Hubs/
 ```
-
-## License
-
-MIT — see [LICENSE](LICENSE).
