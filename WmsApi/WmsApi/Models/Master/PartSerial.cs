@@ -14,6 +14,11 @@ public class PartSerial
     [Column(TypeName = "nvarchar(80)")]
     public string SerialNo { get; set; } = string.Empty;
 
+    // Lot ที่ serial นี้มาจาก — ของจริงจะมาพร้อม serial ตั้งแต่แรก
+    // ผูกกับ POItemLot โดยตรง (ละเอียดสุด) เพราะจาก 1 FK นี้รู้ได้ครบทั้ง PO/Condition/Lot
+    // ผ่าน POItemLot.POItem — ไม่ต้องผูกกับ POItem แยกต่างหาก
+    public int? POItemLotId { get; set; }
+
     public int? ReceiptLineId { get; set; }
 
     public string? PalletId { get; set; }
@@ -30,6 +35,9 @@ public class PartSerial
 
     [ForeignKey(nameof(PartId))]
     public Part? Part { get; set; }
+
+    [ForeignKey(nameof(POItemLotId))]
+    public POItemLot? POItemLot { get; set; }
 
     [ForeignKey(nameof(ReceiptLineId))]
     public ReceiptLine? ReceiptLine { get; set; }

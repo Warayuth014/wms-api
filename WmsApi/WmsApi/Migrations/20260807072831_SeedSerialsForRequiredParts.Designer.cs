@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WmsApi.Data;
 
@@ -11,9 +12,11 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    partial class WmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807072831_SeedSerialsForRequiredParts")]
+    partial class SeedSerialsForRequiredParts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -270,10 +273,13 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("Condition")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateOnly?>("ExpiredDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("LotNumber")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("POId")
                         .IsRequired()
@@ -300,36 +306,10 @@ namespace WmsApi.Migrations
 
                     b.HasIndex("PartId");
 
-                    b.HasIndex("POId", "PartId", "Condition")
+                    b.HasIndex("POId", "PartId")
                         .IsUnique();
 
                     b.ToTable("POItems", "receiving");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.POItemLot", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("LotNumber")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<int>("POItemId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("QtyOrdered")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("POItemId", "LotNumber")
-                        .IsUnique();
-
-                    b.ToTable("POItemLots", "receiving");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Packing", b =>
@@ -532,9 +512,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("POItemLotId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("PackedAt")
                         .HasColumnType("datetime2");
 
@@ -563,8 +540,6 @@ namespace WmsApi.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("POItemLotId");
 
                     b.HasIndex("PackingId");
 
@@ -1245,9 +1220,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateOnly?>("ExpiredDate")
                         .HasColumnType("date");
 
@@ -1505,17 +1477,6 @@ namespace WmsApi.Migrations
                     b.Navigation("PurchaseOrder");
                 });
 
-            modelBuilder.Entity("WmsApi.Models.POItemLot", b =>
-                {
-                    b.HasOne("WmsApi.Models.POItem", "POItem")
-                        .WithMany("Lots")
-                        .HasForeignKey("POItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("POItem");
-                });
-
             modelBuilder.Entity("WmsApi.Models.Packing", b =>
                 {
                     b.HasOne("WmsApi.Models.Pallet", "Pallet")
@@ -1566,11 +1527,6 @@ namespace WmsApi.Migrations
 
             modelBuilder.Entity("WmsApi.Models.PartSerial", b =>
                 {
-                    b.HasOne("WmsApi.Models.POItemLot", "POItemLot")
-                        .WithMany()
-                        .HasForeignKey("POItemLotId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("WmsApi.Models.Packing", "Packing")
                         .WithMany()
                         .HasForeignKey("PackingId")
@@ -1591,8 +1547,6 @@ namespace WmsApi.Migrations
                         .WithMany()
                         .HasForeignKey("ReceiptLineId")
                         .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("POItemLot");
 
                     b.Navigation("Packing");
 
@@ -1904,11 +1858,6 @@ namespace WmsApi.Migrations
             modelBuilder.Entity("WmsApi.Models.CustomerOrder", b =>
                 {
                     b.Navigation("PickOrders");
-                });
-
-            modelBuilder.Entity("WmsApi.Models.POItem", b =>
-                {
-                    b.Navigation("Lots");
                 });
 
             modelBuilder.Entity("WmsApi.Models.Packing", b =>

@@ -8,8 +8,9 @@ public class POItemConfiguration : IEntityTypeConfiguration<POItem>
 {
     public void Configure(EntityTypeBuilder<POItem> builder)
     {
+        // Part เดียวกันรับได้ทั้ง FG และ PW ใน PO เดียวกัน (คนละ line) — unique รวม Condition ด้วย
         builder
-            .HasIndex(x => new { x.POId, x.PartId })
+            .HasIndex(x => new { x.POId, x.PartId, x.Condition })
             .IsUnique();
 
         builder

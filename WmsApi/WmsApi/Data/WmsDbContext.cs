@@ -14,6 +14,7 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
     // receiving
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<POItem> POItems { get; set; }
+    public DbSet<POItemLot> POItemLots { get; set; }
     public DbSet<ReceiptLine> ReceiptLines { get; set; }
 
     // unload
@@ -167,6 +168,12 @@ public class WmsDbContext(DbContextOptions<WmsDbContext> options) : DbContext(op
             .HasOne(s => s.ReceiptLine)
             .WithMany()
             .HasForeignKey(s => s.ReceiptLineId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        mb.Entity<PartSerial>()
+            .HasOne(s => s.POItemLot)
+            .WithMany()
+            .HasForeignKey(s => s.POItemLotId)
             .OnDelete(DeleteBehavior.NoAction);
 
         // CustomerOrder relationships (nullable FKs, prevent cascade issues)

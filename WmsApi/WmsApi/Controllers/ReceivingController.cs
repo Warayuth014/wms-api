@@ -14,7 +14,7 @@ public class ReceivingController(IReceivingService service) : ControllerBase
         this.ToActionResult(await service.GetPOAsync(poId));
 
     [HttpGet("validate-serial")]
-    public async Task<IActionResult> ValidateSerial([FromQuery] string partId, [FromQuery] string serialNo) =>
+    public async Task<IActionResult> ValidateSerial([FromQuery] string partId, [FromQuery] string? serialNo = null) =>
         this.ToActionResult(await service.ValidateSerialAsync(partId, serialNo));
 
     [HttpPost("scan-part")]

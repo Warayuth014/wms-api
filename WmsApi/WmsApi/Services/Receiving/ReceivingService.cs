@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 using WmsApi.Data;
 using WmsApi.DTOs;
@@ -19,6 +20,8 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             .Include(p => p.Supplier)
             .Include(p => p.Items)
                 .ThenInclude(i => i.Part)
+            .Include(p => p.Items)
+                .ThenInclude(i => i.Lots)
             .FirstOrDefaultAsync(p => p.POId == normalizedPoId);
 
         if (po is null)
@@ -28,7 +31,8 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 "กรุณาตรวจสอบ PO ID อีกครั้ง"));
         }
 
-        var poItemsDict = po.Items.ToDictionary(i => i.PartId);
+        // 1 Part อาจมีหลาย POItem (คนละ Condition — FG/PW) — key ด้วยคู่ (PartId, Condition)
+        var poItemsDict = po.Items.ToDictionary(i => (i.PartId, i.Condition));
 
         // ── PendingLines: line ที่รับแล้วแต่ยังไม่ผูก pallet (สำหรับ resume) ──
         var pendingLines = await db.ReceiptLines
@@ -38,8 +42,17 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             .ToListAsync();
 
         var pendingLineDtos = pendingLines
-            .Select(l => ToScanReceiptPartResponse(l, poItemsDict.GetValueOrDefault(l.PartId), "Resumed"))
+            .Select(l => ToScanReceiptPartResponse(
+                l, poItemsDict.GetValueOrDefault((l.PartId, l.Condition)), "Resumed"))
             .ToList();
+
+        // ── QtyReceived ต่อ lot: sum จาก ReceiptLines (LotNumber อยู่ระดับ receipt line อยู่แล้ว) ──
+        var receivedByLot = (await db.ReceiptLines
+                .Where(l => l.POId == normalizedPoId)
+                .GroupBy(l => new { l.PartId, l.LotNumber })
+                .Select(g => new { g.Key.PartId, g.Key.LotNumber, Qty = g.Sum(l => l.QtyReceived) })
+                .ToListAsync())
+            .ToDictionary(x => (x.PartId, x.LotNumber), x => x.Qty);
 
         return ServiceResult.Ok(new POResponse(
             POId: po.POId,
@@ -47,23 +60,28 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             SupplierName: po.Supplier!.FullName,
             Status: po.Status,
             CreatedAt: po.CreatedAt,
-            Items: po.Items.Select(ToPOItemResponse).ToList(),
+            Items: po.Items
+                .SelectMany(i => i.Lots.Select(lot => ToPOItemResponse(i, lot, receivedByLot)))
+                .ToList(),
             PendingLines: pendingLineDtos
         ));
     }
 
-    public async Task<ServiceResult> ValidateSerialAsync(string partId, string serialNo)
+    public async Task<ServiceResult> ValidateSerialAsync(string partId, string? serialNo)
     {
         if (string.IsNullOrWhiteSpace(partId))
             return ServiceResult.BadRequest(new ApiError("กรุณาระบุ Part ID"));
 
+        // สแกน Part ID อย่างเดียว (ยังไม่มี S/N) — ตอนเริ่ม flow ยังไม่รู้ว่าจะรับ condition/lot ไหน
         if (string.IsNullOrWhiteSpace(serialNo))
-            return ServiceResult.BadRequest(new ApiError("กรุณาระบุ S/N"));
+            return await GetPartLinesAsync(partId);
 
         var normalizedPartId = partId.Trim().ToUpperInvariant();
         var normalizedSerialNo = serialNo.Trim().ToUpperInvariant();
 
         var serial = await db.PartSerials
+            .Include(s => s.POItemLot)
+                .ThenInclude(l => l!.POItem)
             .FirstOrDefaultAsync(s =>
                 s.PartId == normalizedPartId &&
                 s.SerialNo == normalizedSerialNo);
@@ -83,10 +101,93 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         }
 
         return ServiceResult.Ok(new ValidateReceivingSerialResponse(
+            LineId: serial.POItemLotId,
+            POId: serial.POItemLot?.POItem?.POId,
+            Condition: serial.POItemLot?.POItem?.Condition,
+            LotNumber: serial.POItemLot?.LotNumber,
             PartId: serial.PartId,
             SerialNo: serial.SerialNo,
             Status: serial.Status
         ));
+    }
+
+    // ── สแกน Part ID ครั้งแรก (ยังไม่มี S/N) — คืน line/condition/lot ทั้งหมดของ Part ให้ frontend popup เลือก ──
+    private async Task<ServiceResult> GetPartLinesAsync(string partId)
+    {
+        var normalizedPartId = partId.Trim().ToUpperInvariant();
+
+        var part = await db.Parts.FindAsync(normalizedPartId);
+        if (part is null)
+        {
+            return ServiceResult.NotFound(new ApiError(
+                $"ไม่พบ Part '{normalizedPartId}' ในระบบ"));
+        }
+
+        var items = await db.POItems
+            .Include(i => i.Lots)
+            .Where(i => i.PartId == normalizedPartId)
+            .ToListAsync();
+
+        if (items.Count == 0)
+        {
+            return ServiceResult.NotFound(new ApiError(
+                $"Part '{normalizedPartId}' ไม่อยู่ใน PO ไหนเลย"));
+        }
+
+        var receivedByLot = (await db.ReceiptLines
+                .Where(l => l.PartId == normalizedPartId && l.LotNumber != null)
+                .GroupBy(l => l.LotNumber!)
+                .Select(g => new { LotNumber = g.Key, Qty = g.Sum(l => l.QtyReceived) })
+                .ToListAsync())
+            .ToDictionary(x => x.LotNumber, x => x.Qty);
+
+        // จัดกลุ่ม Condition → Lot ด้วย nested dictionary (เลี่ยง double-lookup ด้วย CollectionsMarshal
+        // เพราะ production ข้อมูลจริงมีจำนวน line/lot เยอะกว่าข้อมูลทดสอบมาก)
+        var conditions = GroupByConditionAndLot(items);
+
+        return ServiceResult.Ok(new PartLinesResponse(
+            PartId: part.PartId,
+            SerialRequire: part.SerialRequire,
+            Lines: conditions.Select(kv => new PartLineResponse(
+                LineId: kv.Value.Item.Id,
+                POId: kv.Value.Item.POId,
+                Condition: kv.Key,
+                Lots: kv.Value.Lots.Values
+                    .Select(lot => new POItemLotResponse(
+                        Id: lot.Id,
+                        LotNumber: lot.LotNumber,
+                        QtyOrdered: lot.QtyOrdered,
+                        QtyReceived: receivedByLot.GetValueOrDefault(lot.LotNumber)))
+                    .ToList()
+            )).ToList()
+        ));
+    }
+
+    // แยกออกมาเป็นเมธอด sync ต่างหาก — ref local (CollectionsMarshal) ใช้ในเมธอด async ไม่ได้ (C# 12)
+    private static Dictionary<string, (POItem Item, Dictionary<string, POItemLot> Lots)> GroupByConditionAndLot(
+        List<POItem> items)
+    {
+        var conditions = new Dictionary<string, (POItem Item, Dictionary<string, POItemLot> Lots)>();
+        foreach (var item in items)
+        {
+            foreach (var lot in item.Lots)
+            {
+                ref var group = ref CollectionsMarshal.GetValueRefOrAddDefault(
+                    conditions, item.Condition, out var conditionExists);
+                if (!conditionExists)
+                {
+                    group = (item, new Dictionary<string, POItemLot>());
+                }
+
+                ref var existingLot = ref CollectionsMarshal.GetValueRefOrAddDefault(
+                    group.Lots, lot.LotNumber, out var lotExists);
+                if (!lotExists)
+                {
+                    existingLot = lot;
+                }
+            }
+        }
+        return conditions;
     }
 
     public async Task<ServiceResult> ScanPartAsync(ScanReceiptPartRequest req)
@@ -152,21 +253,26 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 $"ผู้ใช้ '{req.OperatorId}' ถูกระงับการใช้งาน"));
         }
 
-        var poItem = await db.POItems
-            .Include(i => i.Part)
-            .FirstOrDefaultAsync(i => i.POId == req.POId && i.PartId == req.PartId);
+        // lineId (= POItemLot.Id) ระบุ line/lot ที่แน่นอนตรงๆ — frontend resolve มาแล้วตั้งแต่ตอนสแกน Part ID
+        var lot = await db.POItemLots
+            .Include(l => l.POItem)
+                .ThenInclude(i => i!.Part)
+            .FirstOrDefaultAsync(l => l.Id == req.LineId);
 
-        if (poItem is null)
+        if (lot?.POItem is null || lot.POItem.POId != req.POId || lot.POItem.PartId != req.PartId)
         {
             return ServiceResult.BadRequest(new ApiError(
-                $"Part '{req.PartId}' ไม่อยู่ใน PO '{req.POId}'",
-                "กรุณาตรวจสอบว่าสแกนสินค้าถูกชิ้น"));
+                $"ไม่พบ Line ID {req.LineId} สำหรับ Part '{req.PartId}' ใน PO '{req.POId}'",
+                "กรุณาสแกน Part ID ใหม่อีกครั้ง"));
         }
+
+        var poItem = lot.POItem;
 
         var scannedSerialEntities = new List<PartSerial>();
         if (scannedSerials.Count > 0)
         {
             scannedSerialEntities = await db.PartSerials
+                .Include(s => s.POItemLot)
                 .Where(s => s.PartId == req.PartId && scannedSerials.Contains(s.SerialNo))
                 .ToListAsync();
 
@@ -192,17 +298,32 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                     $"S/N ถูกใช้งานแล้ว: {string.Join(", ", usedSerials)}",
                     "กรุณาตรวจสอบสินค้าหรือใช้ S/N ที่ยังไม่ถูกรับเข้าระบบ"));
             }
+
+            // S/N ต้องเป็นของ lot ที่กำลังรับอยู่เท่านั้น — กันเคสสแกน S/N lot อื่นหลุดเข้ามาผิด lot
+            var wrongLotSerials = scannedSerialEntities
+                .Where(s => s.POItemLotId != lot.Id)
+                .Select(s => $"{s.SerialNo} (จริงๆ อยู่ Lot '{s.POItemLot?.LotNumber ?? "ไม่ทราบ"}')")
+                .ToList();
+
+            if (wrongLotSerials.Count > 0)
+            {
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ไม่ตรงกับ Lot '{lot.LotNumber}' ที่กำลังรับ: {string.Join(", ", wrongLotSerials)}",
+                    "กรุณาตรวจสอบว่าสแกน S/N ของ Lot ถูกต้อง"));
+            }
         }
 
         var existingPending = await db.ReceiptLines
             .FirstOrDefaultAsync(l => l.POId == req.POId
                                    && l.PartId == req.PartId
+                                   && l.Condition == poItem.Condition
+                                   && l.LotNumber == lot.LotNumber
                                    && l.Status == "PENDING");
 
         if (existingPending is not null)
         {
             return ServiceResult.BadRequest(new ApiError(
-                $"Part '{req.PartId}' มีรายการ PENDING อยู่แล้ว",
+                $"Part '{req.PartId}' Lot '{lot.LotNumber}' มีรายการ PENDING อยู่แล้ว",
                 "กรุณาผูก Pallet ให้รายการเดิมก่อน หรือยกเลิกรายการเดิม"));
         }
 
@@ -224,7 +345,7 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             PartId = req.PartId,
             QtyReceived = req.QtyReceived,
             Condition = poItem.Condition,
-            LotNumber = poItem.LotNumber,
+            LotNumber = lot.LotNumber,
             ExpiredDate = poItem.ExpiredDate,
             Status = "PENDING",
             OperatorId = req.OperatorId
@@ -245,12 +366,41 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
 
         await db.SaveChangesAsync();
 
-        // ── Serial Numbers ──
+        // ── Serial Numbers ── (เจนอัตโนมัติเฉพาะ Part ที่ SerialRequire=true และไม่ได้สแกน S/N มาเอง)
         if (scannedSerials.Count > 0)
             ApplyScannedSerials(scannedSerialEntities, line.LineId, null);
-        else
-            await GenerateSerialsAsync(req.PartId, req.QtyReceived, line.LineId, null);
+        else if (poItem.Part!.SerialRequire)
+            await GenerateSerialsAsync(req.PartId, lot.Id, req.QtyReceived, line.LineId, null);
         await db.SaveChangesAsync();
+
+        // ── ผูก Pallet ให้เลยในตัว ถ้าส่ง PalletId มาด้วย (ไม่ต้องเรียก assign-pallet แยก) ──
+        string? palletError = null;
+        var autoClosed = false;
+        string? assignedPoStatus = null;
+        string? closeMessage = null;
+
+        if (!string.IsNullOrWhiteSpace(req.PalletId))
+        {
+            var assignResult = await AssignPalletAsync(new AssignPalletRequest(
+                PalletId: req.PalletId,
+                PalletType: poItem.Condition,
+                OperatorId: req.OperatorId,
+                LineIds: [line.LineId]
+            ));
+
+            if (assignResult.StatusCode == 200 && assignResult.Payload is AssignPalletResponse assignData)
+            {
+                autoClosed = assignData.AutoClosed;
+                assignedPoStatus = assignData.POStatus;
+                closeMessage = assignData.CloseMessage;
+            }
+            else if (assignResult.Payload is ApiError err)
+            {
+                // scan สำเร็จแล้ว (บันทึกไปแล้วด้านบน) แค่ผูก pallet ไม่สำเร็จ — รายการยังค้าง PENDING
+                // ให้ผูกใหม่ทีหลังผ่าน assign-pallet ได้ ไม่ต้อง fail ทั้ง request
+                palletError = err.Error;
+            }
+        }
 
         return ServiceResult.Ok(new ScanReceiptPartResponse(
             LineId: line.LineId,
@@ -263,9 +413,14 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             QtyReceived: req.QtyReceived,
             QtyRemaining: remaining,
             Condition: poItem.Condition,
-            LotNumber: poItem.LotNumber,
+            LotNumber: lot.LotNumber,
             POItemStatus: poItem.Status,
-            Message: message
+            Message: message,
+            PalletId: palletError is null ? req.PalletId : null,
+            AutoClosed: autoClosed,
+            POStatus: assignedPoStatus,
+            CloseMessage: closeMessage,
+            PalletError: palletError
         ));
     }
 
@@ -508,22 +663,36 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
         return ServiceResult.Ok(new PendingPalletLinesResponse(Count: result.Count, Lines: result));
     }
 
-    private static POItemResponse ToPOItemResponse(POItem item) =>
-        new(
-            Id: item.Id,
+    // 1 lot = 1 line — สถานะ/qty คำนวณแยกต่อ lot (ไม่ใช่ยอดรวมของ POItem)
+    private static POItemResponse ToPOItemResponse(
+        POItem item,
+        POItemLot lot,
+        Dictionary<(string PartId, string? LotNumber), int> receivedByLot)
+    {
+        var qtyReceived = receivedByLot.GetValueOrDefault((item.PartId, lot.LotNumber));
+        var qtyRemaining = Math.Max(0, lot.QtyOrdered - qtyReceived);
+        var status = qtyReceived >= lot.QtyOrdered ? "RECEIVED"
+                    : qtyReceived > 0 ? "PARTIAL"
+                                      : "PENDING";
+        if (qtyReceived > lot.QtyOrdered) status = "OVER";
+
+        return new(
+            Id: lot.Id,
             PartId: item.PartId,
             Owner: item.Part!.Owner,
             Brand: item.Part!.Brand,
             ItemDesc: item.Part!.ItemDesc,
             ImageUrl: item.Part!.ImageUrl,
-            QtyOrdered: item.QtyOrdered,
-            QtyReceived: item.QtyReceived,
-            QtyRemaining: item.QtyRemaining,
-            Status: item.Status,
+            SerialRequire: item.Part!.SerialRequire,
+            QtyOrdered: lot.QtyOrdered,
+            QtyReceived: qtyReceived,
+            QtyRemaining: qtyRemaining,
+            Status: status,
             Condition: item.Condition,
-            LotNumber: item.LotNumber,
+            LotNumber: lot.LotNumber,
             ExpiredDate: item.ExpiredDate?.ToString("yyyy-MM-dd")
         );
+    }
 
     private static ScanReceiptPartResponse ToScanReceiptPartResponse(
         ReceiptLine line,
@@ -563,7 +732,7 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
     }
 
     // ── Generate N serial numbers for a part ──
-    private async Task GenerateSerialsAsync(string partId, int qty, int? receiptLineId, string? palletId)
+    private async Task GenerateSerialsAsync(string partId, int poItemLotId, int qty, int? receiptLineId, string? palletId)
     {
         if (qty <= 0) return;
 
@@ -578,6 +747,7 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
             {
                 PartId = partId,
                 SerialNo = $"SN-{partId}-{lastSeq + i:D6}",
+                POItemLotId = poItemLotId,
                 ReceiptLineId = receiptLineId,
                 PalletId = palletId,
                 Status = "STORED",

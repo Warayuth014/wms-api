@@ -15,7 +15,6 @@ public class POItem
     public int QtyRemaining { get; set; } = 0;
     public string Status { get; set; } = "PENDING";
     public string Condition { get; set; } = "FG";
-    public string? LotNumber { get; set; }
     public DateOnly? ExpiredDate { get; set; }
 
     [ForeignKey(nameof(POId))]
@@ -23,4 +22,6 @@ public class POItem
 
     [ForeignKey(nameof(PartId))]
     public Part? Part { get; set; }
+
+    public ICollection<POItemLot> Lots { get; set; } = [];
 }

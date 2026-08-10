@@ -6,7 +6,7 @@ namespace WmsApi.Services.Receiving;
 public interface IReceivingService
 {
     Task<ServiceResult> GetPOAsync(string poId);
-    Task<ServiceResult> ValidateSerialAsync(string partId, string serialNo);
+    Task<ServiceResult> ValidateSerialAsync(string partId, string? serialNo);
     Task<ServiceResult> ScanPartAsync(ScanReceiptPartRequest req);
     Task<ServiceResult> AssignPalletAsync(AssignPalletRequest req);
     Task<ServiceResult> GetPendingPalletLinesAsync();

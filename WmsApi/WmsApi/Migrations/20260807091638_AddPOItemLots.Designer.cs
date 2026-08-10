@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WmsApi.Data;
 
@@ -11,9 +12,11 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    partial class WmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807091638_AddPOItemLots")]
+    partial class AddPOItemLots
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -270,7 +273,7 @@ namespace WmsApi.Migrations
 
                     b.Property<string>("Condition")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateOnly?>("ExpiredDate")
                         .HasColumnType("date");
@@ -300,7 +303,7 @@ namespace WmsApi.Migrations
 
                     b.HasIndex("PartId");
 
-                    b.HasIndex("POId", "PartId", "Condition")
+                    b.HasIndex("POId", "PartId")
                         .IsUnique();
 
                     b.ToTable("POItems", "receiving");
@@ -532,9 +535,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("POItemLotId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("PackedAt")
                         .HasColumnType("datetime2");
 
@@ -563,8 +563,6 @@ namespace WmsApi.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("POItemLotId");
 
                     b.HasIndex("PackingId");
 
@@ -1245,9 +1243,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateOnly?>("ExpiredDate")
                         .HasColumnType("date");
 
@@ -1566,11 +1561,6 @@ namespace WmsApi.Migrations
 
             modelBuilder.Entity("WmsApi.Models.PartSerial", b =>
                 {
-                    b.HasOne("WmsApi.Models.POItemLot", "POItemLot")
-                        .WithMany()
-                        .HasForeignKey("POItemLotId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("WmsApi.Models.Packing", "Packing")
                         .WithMany()
                         .HasForeignKey("PackingId")
@@ -1591,8 +1581,6 @@ namespace WmsApi.Migrations
                         .WithMany()
                         .HasForeignKey("ReceiptLineId")
                         .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("POItemLot");
 
                     b.Navigation("Packing");
 

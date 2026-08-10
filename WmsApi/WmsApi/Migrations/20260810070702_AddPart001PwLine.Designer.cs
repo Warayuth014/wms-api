@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WmsApi.Data;
 
@@ -11,9 +12,11 @@ using WmsApi.Data;
 namespace WmsApi.Migrations
 {
     [DbContext(typeof(WmsDbContext))]
-    partial class WmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810070702_AddPart001PwLine")]
+    partial class AddPart001PwLine
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -532,7 +535,7 @@ namespace WmsApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("POItemLotId")
+                    b.Property<int?>("POItemId")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("PackedAt")
@@ -564,7 +567,7 @@ namespace WmsApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("POItemLotId");
+                    b.HasIndex("POItemId");
 
                     b.HasIndex("PackingId");
 
@@ -1245,9 +1248,6 @@ namespace WmsApi.Migrations
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateOnly?>("ExpiredDate")
                         .HasColumnType("date");
 
@@ -1566,9 +1566,9 @@ namespace WmsApi.Migrations
 
             modelBuilder.Entity("WmsApi.Models.PartSerial", b =>
                 {
-                    b.HasOne("WmsApi.Models.POItemLot", "POItemLot")
+                    b.HasOne("WmsApi.Models.POItem", "POItem")
                         .WithMany()
-                        .HasForeignKey("POItemLotId")
+                        .HasForeignKey("POItemId")
                         .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("WmsApi.Models.Packing", "Packing")
@@ -1592,7 +1592,7 @@ namespace WmsApi.Migrations
                         .HasForeignKey("ReceiptLineId")
                         .OnDelete(DeleteBehavior.NoAction);
 
-                    b.Navigation("POItemLot");
+                    b.Navigation("POItem");
 
                     b.Navigation("Packing");
 

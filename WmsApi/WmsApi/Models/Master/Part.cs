@@ -14,5 +14,6 @@ public class Part
     public string? ImageUrl { get; set; }
     public int? MinStock { get; set; }
     public int? MaxStock { get; set; }
+    public bool SerialRequire { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
