@@ -14,13 +14,29 @@ public class UnloadService(WmsDbContext db) : IUnloadService
         if (pallet is null)
             return ServiceResult.NotFound(new ApiError($"Pallet '{req.PalletId}' not found."));
 
+        // S/N ที่ยัง STORED อยู่บน pallet นี้ — ใช้แปะเข้า item แต่ละ Part+Lot ด้านล่าง
+        var availableSerials = await db.PartSerials
+            .Include(s => s.ReceiptLine)
+            .Where(s => s.PalletId == req.PalletId && s.Status == "STORED")
+            .Select(s => new { s.PartId, LotNumber = s.ReceiptLine!.LotNumber, s.SerialNo })
+            .ToListAsync();
+
+        List<string> SerialsFor(string partId, string? lotNumber) => availableSerials
+            .Where(s => s.PartId == partId && s.LotNumber == lotNumber)
+            .Select(s => s.SerialNo)
+            .ToList();
+
         if (pallet.Status == "UNLOADING")
         {
+            // เรียงเอา session ล่าสุดก่อนเสมอ — pallet ควรมี session ค้างแค่ตัวเดียว แต่ถ้ามีหลายตัว (เช่น session เก่าตกค้าง)
+            // ต้องไม่สุ่มหยิบ เพราะ EF/SQL ไม่รับประกันลำดับถ้าไม่ใส่ OrderBy
             var existing = await db.UnloadSessions
                 .Include(s => s.UnloadLines)
                     .ThenInclude(l => l.Part)
-                .FirstOrDefaultAsync(s => s.PalletId == req.PalletId
-                                       && (s.Status == "STEP1" || s.Status == "STEP2"));
+                .Where(s => s.PalletId == req.PalletId
+                         && (s.Status == "STEP1" || s.Status == "STEP2"))
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefaultAsync();
 
             if (existing is null)
             {
@@ -39,6 +55,7 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                 .ToDictionary(g => g.Key, g => g.First().Condition);
 
             var existingItems = existing.UnloadLines.Select(l => new UnloadItemResponse(
+                LineId: l.LineId,
                 PartId: l.PartId,
                 Owner: l.Part!.Owner,
                 Brand: l.Part!.Brand,
@@ -47,12 +64,13 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                 LotNumber: l.LotNumber,
                 ExpiredDate: l.ExpiredDate?.ToString("yyyy-MM-dd"),
                 Qty: l.QtyUnloaded,
-                Condition: conditionMap.GetValueOrDefault(l.PartId, "FG")
+                Condition: conditionMap.GetValueOrDefault(l.PartId, "FG"),
+                SerialNumbers: SerialsFor(l.PartId, l.LotNumber)
             )).ToList();
 
-            var confirmedPartIds = existing.UnloadLines
+            var confirmedLineIds = existing.UnloadLines
                 .Where(l => l.Status == "CONFIRMED")
-                .Select(l => l.PartId)
+                .Select(l => l.LineId)
                 .ToList();
 
             return ServiceResult.Ok(new OpenUnloadResponse(
@@ -60,7 +78,7 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                 PalletId: req.PalletId,
                 Status: existing.Status,
                 Items: existingItems,
-                ConfirmedPartIds: confirmedPartIds
+                ConfirmedLineIds: confirmedLineIds
             ));
         }
 
@@ -82,38 +100,33 @@ public class UnloadService(WmsDbContext db) : IUnloadService
         if (receiptLines.Count == 0)
             return ServiceResult.BadRequest(new ApiError($"No items on pallet '{req.PalletId}'."));
 
-        var session = new UnloadSession
-        {
-            PalletId = req.PalletId,
-            OperatorId = req.OperatorId,
-            Status = "STEP1",
-            CreatedAt = DateTime.UtcNow
-        };
-
-        db.UnloadSessions.Add(session);
-        await db.SaveChangesAsync();
-
+        // แยกกลุ่มตาม Part+Lot (ไม่ใช่ Part อย่างเดียว) — 1 Part อาจมีหลาย Lot บน pallet เดียวกัน
         var grouped = receiptLines
-            .GroupBy(rl => rl.PartId)
+            .GroupBy(rl => new { rl.PartId, rl.LotNumber })
             .ToList();
 
-        var itemsList = new List<UnloadItemResponse>();
+        // สร้างแค่ในหน่วยความจำก่อน — ยังไม่ Add ลง db จนกว่าจะรู้ว่ามีของให้ unload จริง
+        // กันไม่ให้เกิด UnloadSession ว่างเปล่าค้าง DB เวลาไม่มีอะไรเหลือให้ unload (เคยเกิด bug นี้มาแล้ว)
+        var linesToAdd = new List<UnloadLine>();
 
         foreach (var g in grouped)
         {
-            var partId = g.Key;
+            var partId = g.Key.PartId;
+            var lotNumber = g.Key.LotNumber;
             var firstLine = g.First();
             var totalOnPallet = g.Sum(rl => rl.QtyReceived);
 
             // ใช้ ReceivedAt ของ ReceiptLines รอบปัจจุบันเป็นตัวแบ่งรอบ
-            // นับ UnloadLines ที่สร้างหลัง ReceiptLine → เป็นของรอบเดียวกัน
+            // นับ UnloadLines ที่ "สร้าง" หลัง ReceiptLine → เป็นของรอบเดียวกัน (ต้องใช้ CreatedAt ไม่ใช่ UpdatedAt
+            // เพราะ UpdatedAt ขยับทุกครั้งที่ confirm ทำให้ UnloadLine รอบเก่าที่เพิ่ง confirm ดันมาทับรอบใหม่ได้)
             // ข้าม UnloadLines รอบเก่า (Pallet หมุนเวียนใหม่) ที่สร้างก่อน ReceiptLine
             var earliestReceived = g.Min(rl => rl.ReceivedAt);
 
             var alreadyUnloaded = await db.UnloadLines
                 .Where(l => l.PalletId == req.PalletId
                           && l.PartId == partId
-                          && l.UpdatedAt >= earliestReceived
+                          && l.LotNumber == lotNumber
+                          && l.CreatedAt >= earliestReceived
                           && (l.Status == "CONFIRMED" || l.Status == "LOADED" || l.Status == "RETURNED"))
                 .SumAsync(l => (int?)l.QtyUnloaded) ?? 0;
 
@@ -121,46 +134,72 @@ public class UnloadService(WmsDbContext db) : IUnloadService
             if (remaining <= 0)
                 continue;
 
-            db.UnloadLines.Add(new UnloadLine
+            linesToAdd.Add(new UnloadLine
             {
-                SessionId = session.SessionId,
                 PalletId = req.PalletId,
                 PartId = partId,
-                LotNumber = firstLine.LotNumber,
+                LotNumber = lotNumber,
                 ExpiredDate = firstLine.ExpiredDate,
                 QtyUnloaded = remaining,
                 Status = "PENDING",
-                OperatorId = req.OperatorId
+                OperatorId = req.OperatorId,
+                CreatedAt = DateTime.UtcNow,
             });
-
-            itemsList.Add(new UnloadItemResponse(
-                PartId: partId,
-                Owner: firstLine.Part!.Owner,
-                Brand: firstLine.Part!.Brand,
-                ItemDesc: firstLine.Part!.ItemDesc,
-                ImageUrl: firstLine.Part!.ImageUrl,
-                LotNumber: firstLine.LotNumber,
-                ExpiredDate: firstLine.ExpiredDate?.ToString("yyyy-MM-dd"),
-                Qty: remaining,
-                Condition: firstLine.Condition
-            ));
         }
 
-        if (itemsList.Count == 0)
+        if (linesToAdd.Count == 0)
             return ServiceResult.BadRequest(new ApiError($"No remaining items to unload on pallet '{req.PalletId}'."));
+
+        var session = new UnloadSession
+        {
+            PalletId = req.PalletId,
+            OperatorId = req.OperatorId,
+            Status = "STEP1",
+            CreatedAt = DateTime.UtcNow
+        };
+        db.UnloadSessions.Add(session);
+
+        foreach (var line in linesToAdd)
+        {
+            line.Session = session; // EF ผูก SessionId ให้เองตอน SaveChanges (session ยังไม่มี Id จริงตอนนี้)
+            db.UnloadLines.Add(line);
+        }
 
         pallet.Status = "UNLOADING";
         pallet.Location = "UNLOAD";
         pallet.UpdatedAt = DateTime.UtcNow;
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(); // หลังจุดนี้ linesToAdd แต่ละตัวจะมี LineId จริงแล้ว
+
+        var partsById = receiptLines
+            .GroupBy(rl => rl.PartId)
+            .ToDictionary(g => g.Key, g => g.First().Part!);
+
+        var itemsList = linesToAdd.Select(line =>
+        {
+            var part = partsById[line.PartId];
+            var condition = receiptLines.First(rl => rl.PartId == line.PartId && rl.LotNumber == line.LotNumber).Condition;
+            return new UnloadItemResponse(
+                LineId: line.LineId,
+                PartId: line.PartId,
+                Owner: part.Owner,
+                Brand: part.Brand,
+                ItemDesc: part.ItemDesc,
+                ImageUrl: part.ImageUrl,
+                LotNumber: line.LotNumber,
+                ExpiredDate: line.ExpiredDate?.ToString("yyyy-MM-dd"),
+                Qty: line.QtyUnloaded,
+                Condition: condition,
+                SerialNumbers: SerialsFor(line.PartId, line.LotNumber)
+            );
+        }).ToList();
 
         return ServiceResult.Ok(new OpenUnloadResponse(
             SessionId: session.SessionId,
             PalletId: req.PalletId,
             Status: session.Status,
             Items: itemsList,
-            ConfirmedPartIds: []
+            ConfirmedLineIds: []
         ));
     }
 
@@ -172,22 +211,27 @@ public class UnloadService(WmsDbContext db) : IUnloadService
         if (session is null)
             return ServiceResult.BadRequest(new ApiError("Invalid session or not in STEP1."));
 
+        // LineId ระบุ Part+Lot ที่แน่นอน — กันเคส Part เดียวกันมีหลาย Lot บน pallet เดียวกัน
         var line = await db.UnloadLines
-            .FirstOrDefaultAsync(l => l.SessionId == req.SessionId
-                                   && l.PartId == req.PartId
+            .FirstOrDefaultAsync(l => l.LineId == req.LineId
+                                   && l.SessionId == req.SessionId
                                    && l.Status == "PENDING");
 
         if (line is null)
         {
-            var hasConfirmed = await db.UnloadLines
-                .AnyAsync(l => l.SessionId == req.SessionId
-                            && l.PartId == req.PartId
-                            && l.Status == "CONFIRMED");
+            var existingLine = await db.UnloadLines
+                .FirstOrDefaultAsync(l => l.LineId == req.LineId && l.SessionId == req.SessionId);
 
-            return hasConfirmed
-                ? ServiceResult.BadRequest(new ApiError($"Part '{req.PartId}' ไม่มีของเหลือให้ unload แล้ว"))
-                : ServiceResult.NotFound(new ApiError($"Part '{req.PartId}' not found in session."));
+            if (existingLine is null)
+                return ServiceResult.NotFound(new ApiError($"Line {req.LineId} not found in session."));
+
+            return ServiceResult.BadRequest(new ApiError(
+                $"Part '{existingLine.PartId}' (Line {req.LineId}) ไม่มีของเหลือให้ unload แล้ว (status: {existingLine.Status})"));
         }
+
+        if (line.PartId != req.PartId)
+            return ServiceResult.BadRequest(new ApiError(
+                $"Line {req.LineId} เป็นของ Part '{line.PartId}' ไม่ตรงกับ '{req.PartId}'"));
 
         var originalQty = line.QtyUnloaded;
         if (req.QtyUnloaded.HasValue)
@@ -199,6 +243,38 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                 return ServiceResult.BadRequest(new ApiError($"จำนวนเกินที่มีบน Pallet ({line.QtyUnloaded})"));
 
             line.QtyUnloaded = req.QtyUnloaded.Value;
+        }
+
+        // ── สินค้าที่มี S/N (ยัง STORED บน pallet นี้) ต้องสแกน S/N ให้ครบก่อน confirm unload ──
+        var scannedSerials = req.SerialNumbers?
+            .Select(s => s.Trim().ToUpperInvariant())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .ToList() ?? [];
+
+        var availableSerials = await db.PartSerials
+            .Include(s => s.ReceiptLine)
+            .Where(s => s.PartId == req.PartId
+                     && s.Status == "STORED"
+                     && s.PalletId == line.PalletId
+                     && s.ReceiptLine!.LotNumber == line.LotNumber)
+            .ToListAsync();
+
+        if (availableSerials.Count > 0 || scannedSerials.Count > 0)
+        {
+            if (scannedSerials.Count == 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"กรุณาสแกน S/N สำหรับ Part '{req.PartId}' ก่อน Confirm Unload"));
+
+            if (scannedSerials.Count != line.QtyUnloaded)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"จำนวน S/N ({scannedSerials.Count}) ไม่ตรงกับจำนวนที่ Unload ({line.QtyUnloaded})"));
+
+            var availableSet = availableSerials.Select(s => s.SerialNo).ToHashSet();
+            var missing = scannedSerials.Where(sn => !availableSet.Contains(sn)).ToList();
+            if (missing.Count > 0)
+                return ServiceResult.BadRequest(new ApiError(
+                    $"S/N ไม่พบหรือไม่พร้อม Unload: {string.Join(", ", missing)}"));
         }
 
         line.Status = "CONFIRMED";
@@ -217,13 +293,15 @@ public class UnloadService(WmsDbContext db) : IUnloadService
                 ExpiredDate = line.ExpiredDate,
                 QtyUnloaded = remainder,
                 Status = "PENDING",
-                OperatorId = line.OperatorId
+                OperatorId = line.OperatorId,
+                CreatedAt = DateTime.UtcNow,
             });
         }
 
         var receiptLines = await db.ReceiptLines
             .Where(r => r.PalletId == line.PalletId
                      && r.PartId == req.PartId
+                     && r.LotNumber == line.LotNumber
                      && r.Status == "PALLETIZED")
             .ToListAsync();
 
@@ -231,14 +309,15 @@ public class UnloadService(WmsDbContext db) : IUnloadService
 
         if (receiptLines.Count > 0)
         {
-            // ใช้ ReceivedAt ของ ReceiptLines เป็นตัวแบ่งรอบ
+            // ใช้ ReceivedAt ของ ReceiptLines เป็นตัวแบ่งรอบ (เทียบกับ CreatedAt ไม่ใช่ UpdatedAt — เหตุผลเดียวกับ OpenSessionAsync)
             var earliestReceived = receiptLines.Min(r => r.ReceivedAt);
 
             var previouslyUnloaded = await db.UnloadLines
                 .Where(l => l.PalletId == line.PalletId
                           && l.PartId == req.PartId
+                          && l.LotNumber == line.LotNumber
                           && l.LineId != line.LineId
-                          && l.UpdatedAt >= earliestReceived
+                          && l.CreatedAt >= earliestReceived
                           && (l.Status == "CONFIRMED" || l.Status == "LOADED" || l.Status == "RETURNED"))
                 .SumAsync(l => (int?)l.QtyUnloaded) ?? 0;
 

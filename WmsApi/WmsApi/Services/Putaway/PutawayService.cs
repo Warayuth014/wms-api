@@ -54,6 +54,7 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
             .ToListAsync();
 
         var items = lines.Select(l => new UnloadItemResponse(
+            LineId: l.LineId,
             PartId: l.PartId,
             Owner: l.Part!.Owner,
             Brand: l.Part!.Brand,
@@ -62,7 +63,8 @@ public class PutawayService(WmsDbContext db, IHubContext<PutawayHub> hub) : IPut
             LotNumber: l.LotNumber,
             ExpiredDate: l.ExpiredDate?.ToString("yyyy-MM-dd"),
             Qty: l.QtyReceived,
-            Condition: l.Condition
+            Condition: l.Condition,
+            SerialNumbers: [] // Putaway ไม่ใช้ S/N ในขั้นตอนนี้
         )).ToList();
 
         var suggested = pallet.Status == "AVAILABLE" ? "ASRS"
