@@ -9,3 +9,7 @@
 # .NET build output
 obj/
 bin/
+
+# Local secrets — real connection strings live here, never in appsettings.json
+appsettings.Development.json
+appsettings.*.local.json
