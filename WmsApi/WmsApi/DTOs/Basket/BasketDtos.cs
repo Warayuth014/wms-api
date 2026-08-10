@@ -13,7 +13,8 @@ public record UnloadedItemResponse(
     int QtyLoaded,          // จำนวนที่ load เข้า basket แล้ว
     int QtyRemaining,       // QtyUnloaded - QtyLoaded
     string? BasketId,       // basket ล่าสุดที่ load เข้าไป (ถ้ามี)
-    List<int> UnloadLineIds // UnloadLine IDs ทั้งหมดใน group นี้
+    List<int> UnloadLineIds, // UnloadLine IDs ทั้งหมดใน group นี้
+    List<string> SerialNumbers // S/N ที่ยังไม่ได้ load (STORED) — มีรายการ = ต้องสแกน S/N ก่อน load เข้า basket
 );
 
 public record UnloadedItemsResponse(
@@ -29,7 +30,8 @@ public record LoadToBasketRequest(
     string? LotNumber,
     string BasketId,
     int Qty,
-    string OperatorId
+    string OperatorId,
+    List<string>? SerialNumbers = null
 );
 
 public record LoadToBasketResponse(
