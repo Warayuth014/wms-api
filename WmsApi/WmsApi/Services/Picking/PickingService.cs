@@ -875,6 +875,28 @@ public class PickingService(WmsDbContext db) : IPickingService
             ? null
             : await EnsureActiveCustomerOrderAsync(owner);
 
+        // ตรวจสอบทุก line ให้ผ่านหมดก่อน ค่อยสร้างจริง — กัน PickOrder/Detail ค้าง DB เปล่าๆ
+        // ถ้า validate fail กลางทาง (เคยมี bug แบบนี้ที่ Unload มาแล้ว)
+        var lineIds = req.Items.Select(i => i.LineId).Distinct().ToList();
+        var receiptLines = await db.ReceiptLines
+            .Where(l => lineIds.Contains(l.LineId))
+            .ToDictionaryAsync(l => l.LineId);
+
+        foreach (var item in req.Items)
+        {
+            if (!receiptLines.TryGetValue(item.LineId, out var rl) || rl.Status != "PALLETIZED")
+            {
+                return ServiceResult.BadRequest(new ApiError(
+                    $"ReceiptLine {item.LineId} ไม่พร้อม (status: {(receiptLines.TryGetValue(item.LineId, out var found) ? found.Status : "not found")})"));
+            }
+
+            if (item.Qty <= 0 || item.Qty > rl.QtyReceived)
+            {
+                return ServiceResult.BadRequest(new ApiError(
+                    $"จำนวน {item.Qty} ไม่ถูกต้องสำหรับ Line {item.LineId} (มี {rl.QtyReceived})"));
+            }
+        }
+
         var pickOrder = new PickOrder
         {
             PickOrderId = orderId,
@@ -883,9 +905,7 @@ public class PickingService(WmsDbContext db) : IPickingService
             CustomerOrderId = customerOrderId,
             CreatedAt = DateTime.UtcNow,
         };
-
         db.PickOrders.Add(pickOrder);
-        await db.SaveChangesAsync();
 
         var grouped = req.Items.GroupBy(i => i.PartId).ToList();
 
@@ -901,28 +921,13 @@ public class PickingService(WmsDbContext db) : IPickingService
                 ReservedQty = 0,
                 Status = "PENDING",
             };
-
             db.PickOrderDetails.Add(detail);
-            await db.SaveChangesAsync();
 
             foreach (var item in g)
             {
-                var rl = await db.ReceiptLines.FindAsync(item.LineId);
-                if (rl is null || rl.Status != "PALLETIZED")
-                {
-                    return ServiceResult.BadRequest(new ApiError(
-                        $"ReceiptLine {item.LineId} ไม่พร้อม (status: {rl?.Status ?? "not found"})"));
-                }
-
-                if (item.Qty <= 0 || item.Qty > rl.QtyReceived)
-                {
-                    return ServiceResult.BadRequest(new ApiError(
-                        $"จำนวน {item.Qty} ไม่ถูกต้องสำหรับ Line {item.LineId} (มี {rl.QtyReceived})"));
-                }
-
                 db.PickOrderSubs.Add(new PickOrderSub
                 {
-                    PickOrderDetailId = detail.Id,
+                    PickOrderDetail = detail, // navigation — EF ผูก PickOrderDetailId ให้เองตอน SaveChanges
                     ReceiptLineId = item.LineId,
                     AllocatedQty = item.Qty,
                     PickedQty = 0,
