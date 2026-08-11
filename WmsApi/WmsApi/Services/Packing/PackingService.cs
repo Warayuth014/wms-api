@@ -216,6 +216,7 @@ public class PackingService(WmsDbContext db) : IPackingService
                 ImageUrl: d.Part?.ImageUrl,
                 RequiredQty: remainingQty,
                 ScannedQty: scans.FirstOrDefault(s => s.PartId == d.PartId)?.Total ?? 0,
+                SerialRequire: d.Part?.SerialRequire ?? false,
                 AvailableSerials: serials
             );
         }).Where(i => i.RequiredQty > 0).ToList();
@@ -255,11 +256,20 @@ public class PackingService(WmsDbContext db) : IPackingService
 
         // เช็คว่า Part นี้อยู่ใน Order นี้จริง + ดึง qty ที่ pick มา
         var orderDetail = await db.PickOrderDetails
+            .Include(d => d.Part)
             .FirstOrDefaultAsync(d => d.PickOrderId == req.PickOrderId && d.PartId == req.PartId);
 
         if (orderDetail is null)
             return ServiceResult.BadRequest(new ApiError(
                 $"Order '{req.PickOrderId}' ไม่มี Part '{req.PartId}'"));
+
+        // สินค้าที่มี S/N ต้องส่ง S/N มาให้ครบเสมอ — ไม่งั้นของหลุด pack ไปโดยไม่มีการอ้างอิงตัวสินค้าจริง
+        if ((orderDetail.Part?.SerialRequire ?? false)
+            && req.SerialNumbers is not { Count: > 0 })
+        {
+            return ServiceResult.BadRequest(new ApiError(
+                $"กรุณาสแกน S/N สำหรับ Part '{req.PartId}'"));
+        }
 
         var qtyRequired = orderDetail.ReservedQty > 0
             ? orderDetail.ReservedQty

@@ -54,6 +54,7 @@ public record PackingPartItem(
     string? ImageUrl,
     int RequiredQty,
     int ScannedQty,
+    bool SerialRequire,
     List<string> AvailableSerials
 );
 
