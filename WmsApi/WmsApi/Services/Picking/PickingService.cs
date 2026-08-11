@@ -410,6 +410,7 @@ public class PickingService(WmsDbContext db) : IPickingService
                     QtyOnPallet: qtyOnPallet,
                     QtyToPickSuggested: qtyToPickSuggested,
                     Condition: first.ReceiptLine!.Condition,
+                    SerialRequire: first.ReceiptLine!.Part!.SerialRequire,
                     AvailableSerials: availableSerials.GetValueOrDefault(g.Key, new List<string>())
                 );
             })
@@ -484,23 +485,6 @@ public class PickingService(WmsDbContext db) : IPickingService
             if (item.Qty <= 0)
                 continue;
 
-            var serialNumbers = item.SerialNumbers?
-                .Select(s => s.Trim().ToUpperInvariant())
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .ToList() ?? new List<string>();
-
-            if (serialNumbers.Count == 0)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"กรุณาสแกน S/N สำหรับ Part '{item.PartId}'"));
-
-            if (serialNumbers.Count != item.Qty)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"จำนวน S/N ({serialNumbers.Count}) ไม่ตรงกับ Qty ({item.Qty}) สำหรับ Part '{item.PartId}'"));
-
-            if (serialNumbers.Distinct().Count() != serialNumbers.Count)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"S/N ซ้ำกันสำหรับ Part '{item.PartId}'"));
-
             var sub = await db.PickOrderSubs
                 .Include(s => s.ReceiptLine).ThenInclude(l => l!.Part)
                 .Include(s => s.PickOrderDetail)
@@ -516,48 +500,80 @@ public class PickingService(WmsDbContext db) : IPickingService
 
             var sourceLine = sub.ReceiptLine!;
             var detail = sub.PickOrderDetail!;
-            var actualQty = serialNumbers.Count;
+            var partRequiresSerial = sourceLine.Part!.SerialRequire;
             var maxPickQty = Math.Min(sourceLine.QtyReceived, sub.AllocatedQty - sub.PickedQty);
-            if (actualQty > maxPickQty)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"จำนวน S/N เกินจำนวนที่ Pick ได้สำหรับ Part '{item.PartId}' (สแกน {actualQty}, ได้สูงสุด {maxPickQty})"));
 
-            var serialsToMove = await db.PartSerials
-                .Where(s => s.PartId == item.PartId
-                         && serialNumbers.Contains(s.SerialNo))
-                .ToListAsync();
+            var serialNumbers = item.SerialNumbers?
+                .Select(s => s.Trim().ToUpperInvariant())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList() ?? new List<string>();
 
-            if (serialsToMove.Count != serialNumbers.Count)
+            var serialsToMove = new List<PartSerial>();
+            int actualQty;
+
+            if (partRequiresSerial)
             {
-                var foundSet = serialsToMove.Select(s => s.SerialNo).ToHashSet();
-                var missing = serialNumbers.Where(sn => !foundSet.Contains(sn)).ToList();
-                return ServiceResult.BadRequest(new ApiError(
-                    $"ไม่พบ S/N: {string.Join(", ", missing)}"));
+                if (serialNumbers.Count == 0)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"กรุณาสแกน S/N สำหรับ Part '{item.PartId}'"));
+
+                if (serialNumbers.Count != item.Qty)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"จำนวน S/N ({serialNumbers.Count}) ไม่ตรงกับ Qty ({item.Qty}) สำหรับ Part '{item.PartId}'"));
+
+                if (serialNumbers.Distinct().Count() != serialNumbers.Count)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"S/N ซ้ำกันสำหรับ Part '{item.PartId}'"));
+
+                actualQty = serialNumbers.Count;
+                if (actualQty > maxPickQty)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"จำนวน S/N เกินจำนวนที่ Pick ได้สำหรับ Part '{item.PartId}' (สแกน {actualQty}, ได้สูงสุด {maxPickQty})"));
+
+                serialsToMove = await db.PartSerials
+                    .Where(s => s.PartId == item.PartId
+                             && serialNumbers.Contains(s.SerialNo))
+                    .ToListAsync();
+
+                if (serialsToMove.Count != serialNumbers.Count)
+                {
+                    var foundSet = serialsToMove.Select(s => s.SerialNo).ToHashSet();
+                    var missing = serialNumbers.Where(sn => !foundSet.Contains(sn)).ToList();
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"ไม่พบ S/N: {string.Join(", ", missing)}"));
+                }
+
+                var wrongPallet = serialsToMove
+                    .Where(s => s.PalletId != req.SourcePalletId)
+                    .Select(s => s.SerialNo)
+                    .ToList();
+                if (wrongPallet.Count > 0)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"S/N ไม่ได้อยู่บน Pallet '{req.SourcePalletId}': {string.Join(", ", wrongPallet)}"));
+
+                var wrongLine = serialsToMove
+                    .Where(s => s.ReceiptLineId != sourceLine.LineId)
+                    .Select(s => s.SerialNo)
+                    .ToList();
+                if (wrongLine.Count > 0)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"S/N ไม่ตรงกับรายการ Pick นี้: {string.Join(", ", wrongLine)}"));
+
+                var unavailable = serialsToMove
+                    .Where(s => s.Status != "STORED")
+                    .Select(s => $"{s.SerialNo}({s.Status})")
+                    .ToList();
+                if (unavailable.Count > 0)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"S/N ไม่พร้อม Pick: {string.Join(", ", unavailable)}"));
             }
-
-            var wrongPallet = serialsToMove
-                .Where(s => s.PalletId != req.SourcePalletId)
-                .Select(s => s.SerialNo)
-                .ToList();
-            if (wrongPallet.Count > 0)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"S/N ไม่ได้อยู่บน Pallet '{req.SourcePalletId}': {string.Join(", ", wrongPallet)}"));
-
-            var wrongLine = serialsToMove
-                .Where(s => s.ReceiptLineId != sourceLine.LineId)
-                .Select(s => s.SerialNo)
-                .ToList();
-            if (wrongLine.Count > 0)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"S/N ไม่ตรงกับรายการ Pick นี้: {string.Join(", ", wrongLine)}"));
-
-            var unavailable = serialsToMove
-                .Where(s => s.Status != "STORED")
-                .Select(s => $"{s.SerialNo}({s.Status})")
-                .ToList();
-            if (unavailable.Count > 0)
-                return ServiceResult.BadRequest(new ApiError(
-                    $"S/N ไม่พร้อม Pick: {string.Join(", ", unavailable)}"));
+            else
+            {
+                actualQty = item.Qty;
+                if (actualQty > maxPickQty)
+                    return ServiceResult.BadRequest(new ApiError(
+                        $"จำนวนเกินที่ Pick ได้สำหรับ Part '{item.PartId}' (ขอ {actualQty}, ได้สูงสุด {maxPickQty})"));
+            }
 
             sub.PickedQty += actualQty;
             if (sub.PickedQty >= sub.AllocatedQty)

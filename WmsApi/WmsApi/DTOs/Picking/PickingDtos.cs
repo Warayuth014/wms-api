@@ -97,6 +97,7 @@ public record PickItemOnPallet(
     int QtyOnPallet,
     int QtyToPickSuggested,
     string Condition,
+    bool SerialRequire,
     List<string> AvailableSerials
 );
 
