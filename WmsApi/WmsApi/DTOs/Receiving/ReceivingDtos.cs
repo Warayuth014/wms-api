@@ -32,7 +32,8 @@ public record POItemLotResponse(
     int Id,
     string LotNumber,
     int QtyOrdered,
-    int QtyReceived
+    int QtyReceived,
+    List<string> SerialNumbers
 );
 
 public record ScanReceiptPartRequest(

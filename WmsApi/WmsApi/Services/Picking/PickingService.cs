@@ -383,9 +383,16 @@ public class PickingService(WmsDbContext db) : IPickingService
             .Distinct()
             .ToList();
 
+        var receiptLineIdsForPick = palletSubs
+            .Select(s => s.ReceiptLineId)
+            .Distinct()
+            .ToList();
+
         var availableSerials = await db.PartSerials
             .Where(s => s.PalletId == req.PalletId
                      && partIdsOnPallet.Contains(s.PartId)
+                     && s.ReceiptLineId.HasValue
+                     && receiptLineIdsForPick.Contains(s.ReceiptLineId.Value)
                      && s.Status == "STORED")
             .OrderBy(s => s.SerialNo)
             .GroupBy(s => s.PartId)

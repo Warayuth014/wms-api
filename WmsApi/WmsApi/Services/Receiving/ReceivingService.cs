@@ -134,6 +134,28 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 $"Part '{normalizedPartId}' ไม่อยู่ใน PO ไหนเลย"));
         }
 
+        var lotIds = items
+            .SelectMany(i => i.Lots)
+            .Select(l => l.Id)
+            .ToList();
+
+        // S/N ที่ผูกกับแต่ละ Lot และยังไม่เคยรับ — ส่งให้หน้าบ้านแสดงก่อนเริ่มสแกน
+        var availableSerials = await db.PartSerials
+            .Where(s => s.POItemLotId.HasValue
+                     && lotIds.Contains(s.POItemLotId.Value)
+                     && s.ReceiptLineId == null
+                     && s.PalletId == null
+                     && s.PackingId == null)
+            .OrderBy(s => s.SerialNo)
+            .Select(s => new { LotId = s.POItemLotId!.Value, s.SerialNo })
+            .ToListAsync();
+
+        var availableSerialsByLot = availableSerials
+            .GroupBy(s => s.LotId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(s => s.SerialNo).ToList());
+
         var receivedByLot = (await db.ReceiptLines
                 .Where(l => l.PartId == normalizedPartId && l.LotNumber != null)
                 .GroupBy(l => l.LotNumber!)
@@ -153,11 +175,22 @@ public class ReceivingService(WmsDbContext db) : IReceivingService
                 POId: kv.Value.Item.POId,
                 Condition: kv.Key,
                 Lots: kv.Value.Lots.Values
-                    .Select(lot => new POItemLotResponse(
-                        Id: lot.Id,
-                        LotNumber: lot.LotNumber,
-                        QtyOrdered: lot.QtyOrdered,
-                        QtyReceived: receivedByLot.GetValueOrDefault(lot.LotNumber)))
+                    .Select(lot =>
+                    {
+                        var qtyReceived = receivedByLot.GetValueOrDefault(lot.LotNumber);
+                        var qtyRemaining = Math.Max(0, lot.QtyOrdered - qtyReceived);
+                        var serialNumbers = availableSerialsByLot
+                            .GetValueOrDefault(lot.Id, [])
+                            .Take(qtyRemaining)
+                            .ToList();
+
+                        return new POItemLotResponse(
+                            Id: lot.Id,
+                            LotNumber: lot.LotNumber,
+                            QtyOrdered: lot.QtyOrdered,
+                            QtyReceived: qtyReceived,
+                            SerialNumbers: serialNumbers);
+                    })
                     .ToList()
             )).ToList()
         ));
